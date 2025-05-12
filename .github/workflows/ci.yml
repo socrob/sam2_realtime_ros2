@@ -1,0 +1,47 @@
+name: ROS 2 CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup ROS 2
+        uses: ros-tooling/setup-ros@v0.7
+        with:
+          required-ros-distributions: humble
+
+      - name: Install dependencies and Python tools
+        run: |
+          sudo apt update
+          sudo apt install -y python3-colcon-common-extensions python3-pip
+          python3 -m pip install --upgrade pip
+
+      - name: Install rosdep dependencies
+        run: |
+          sudo rosdep init || true
+          rosdep update
+          rosdep install --from-paths . --ignore-src -r -y
+
+      - name: Build workspace
+        run: |
+          source /opt/ros/humble/setup.bash
+          colcon build --event-handlers console_direct+
+
+      # - name: Run linters
+      #   run: |
+      #     python3 -m flake8 . --count --show-source --statistics
+      #     python3 -m pep257 .
+
+      - name: Run tests
+        run: |
+          source /opt/ros/humble/setup.bash
+          colcon test
+          colcon test-result --verbose

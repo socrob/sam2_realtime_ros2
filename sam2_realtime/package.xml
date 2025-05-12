@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd"
+             schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>sam2_realtime</name>
+  <version>0.1.0</version>
+  <description>ROS 2 wrapper node for real-time SAM2 tracking with lifecycle behavior.</description>
+
+  <maintainer email="rodrigo.serra@tecnico.ulisboa.pt">Rodrigo Serra</maintainer>
+  <license>GPL-3</license>
+
+  <!-- Runtime dependencies -->
+  <depend>rclpy</depend>
+  <depend>lifecycle_msgs</depend>
+  <depend>cv_bridge</depend>
+  <depend>std_srvs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>sam2_realtime_msgs</depend>
+
+  <!-- Testing -->
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

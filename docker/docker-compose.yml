@@ -1,0 +1,34 @@
+version: '3.9'
+
+services:
+  ros2_template:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: ros2_template
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+    network_mode: host
+    ipc: host
+    pid: host
+    privileged: true
+    environment:
+      - DISPLAY=${DISPLAY}
+      - ROS_DOMAIN_ID=7
+      - FASTDDS_BUILTIN_TRANSPORTS=UDPv4
+    devices:
+      - /dev/video0:/dev/video0
+      - /dev/video1:/dev/video1
+      - /dev/usbmon0:/dev/usbmon0
+      - /dev/usbmon1:/dev/usbmon1
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - /etc/udev/rules.d:/etc/udev/rules.d
+    command: /root/ros2_ws/src/ros2_template/docker/entrypoint.sh
+    stdin_open: true
+    tty: true

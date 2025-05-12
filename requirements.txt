@@ -1,0 +1,11 @@
+-e ./sam2_realtime/sam2_realtime/segment-anything-2-real-time
+torch>=2.3.1
+opencv-python>=4.7.0
+numpy<2
+hydra-core
+rclpy
+matplotlib 
+imageio 
+ultralytics 
+lap 
+shapely

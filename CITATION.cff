@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "ros2_template"
+version: "0.1.0"
+date-released: 2025-05-05
+authors:
+  - family-names: "Serra"
+    given-names: "Rodrigo"
+    affiliation: "Instituto Superior Técnico, Universidade de Lisboa"
+repository-code: "https://github.com/socrob/ros2_template"
+license: "GPL-3.0"
+url: "https://github.com/socrob/ros2_template"
