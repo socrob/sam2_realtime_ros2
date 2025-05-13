@@ -3,19 +3,18 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
-from sam2_realtime_msgs.msg import PromptBbox
 from cv_bridge import CvBridge
 import numpy as np
-from ultralytics import YOLO
 import os
+from ultralytics import YOLO
 
-class YOLOPromptNode(Node):
+class YOLOMaskPromptNode(Node):
     def __init__(self):
-        super().__init__('yolo_prompt_node')
+        super().__init__('yolo_mask_prompt_node')
 
         # self.declare_parameter('image_topic', '/camera/camera/color/image_raw')
         self.declare_parameter('image_topic', '/k4a/rgb/image_raw')
-        self.declare_parameter('yolo_model', 'yolov8n.pt')
+        self.declare_parameter('yolo_model', 'yolov8n-seg.pt')
         self.declare_parameter('confidence_threshold', 0.5)
 
         image_topic = self.get_parameter('image_topic').get_parameter_value().string_value
@@ -25,7 +24,7 @@ class YOLOPromptNode(Node):
         assets_root = os.environ.get("YOLO_ASSETS_DIR", "")
         if not assets_root:
             raise RuntimeError("YOLO_ASSETS_DIR environment variable not set")
-        
+
         self.yolo_model_path = os.path.join(assets_root, yolo_model)
 
         self.bridge = CvBridge()
@@ -33,36 +32,39 @@ class YOLOPromptNode(Node):
         self.conf_threshold = conf_threshold
 
         self.subscription = self.create_subscription(Image, image_topic, self.image_callback, 10)
-        self.publisher = self.create_publisher(PromptBbox, '/sam2/init_prompt', 10)
+        self.publisher = self.create_publisher(Image, '/sam2/init_prompt_mask', 10)
 
-        self.get_logger().info(f'[yolo_prompt_node] Listening on {image_topic}, YOLO model: {yolo_model}')
+        self.get_logger().info(f'[yolo_mask_prompt_node] Listening on {image_topic}, YOLO model: {yolo_model}')
 
     def image_callback(self, msg: Image):
         frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-        results = self.yolo.predict(frame, classes=[0], conf=self.conf_threshold)  # Class 0 = person
+        results = self.yolo.predict(frame, classes=[0], conf=self.conf_threshold)
 
-        best_box = None
+        best_mask = None
         max_area = 0
 
         for result in results:
-            for box in result.boxes:
+            if result.masks is None:
+                continue
+            for i, box in enumerate(result.boxes):
                 if int(box.cls[0]) != 0:
                     continue
-                x1, y1, x2, y2 = map(int, box.xyxy[0])
-                area = (x2 - x1) * (y2 - y1)
+                mask = result.masks.data[i].cpu().numpy().astype(np.uint8) * 255
+                area = np.sum(mask)
                 if area > max_area:
+                    best_mask = mask
                     max_area = area
-                    best_box = (x1, y1, x2, y2)
 
-        if best_box:
-            prompt = PromptBbox()
-            prompt.x_min, prompt.y_min, prompt.x_max, prompt.y_max = best_box
-            self.publisher.publish(prompt)
-            self.get_logger().info(f'[yolo_prompt_node] Published bbox: {best_box}')
+        if best_mask is not None:
+            ros_mask = self.bridge.cv2_to_imgmsg(best_mask, encoding="mono8")
+            ros_mask.header = msg.header
+            self.publisher.publish(ros_mask)
+            self.get_logger().info('[yolo_mask_prompt_node] Published mask for closest person')
+
 
 def main(args=None):
     rclpy.init(args=args)
-    node = YOLOPromptNode()
+    node = YOLOMaskPromptNode()
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()

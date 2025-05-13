@@ -24,6 +24,7 @@ setup(
             "sam2_realtime_node = sam2_realtime.sam2_realtime_node:main",
             "bbox_prompt_node = sam2_realtime.bbox_prompt_node:main",
             "yolo_prompt_node = sam2_realtime.yolo_prompt_node:main",
+            "yolo_mask_prompt_node = sam2_realtime.yolo_mask_prompt_node:main",
         ],
     },
 )
