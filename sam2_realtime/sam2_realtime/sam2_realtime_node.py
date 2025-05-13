@@ -134,7 +134,6 @@ class SAM2Node(LifecycleNode):
     def prompt_cb(self, msg: PromptBbox):
         self.bbox = (msg.x_min, msg.y_min, msg.x_max, msg.y_max)
         self.get_logger().info(f"[sam2_node] Received init prompt: {self.bbox}")
-        self.initialized = False  # Force reinit in next frame
 
     def image_cb(self, msg: Image):
         frame = self.cv_bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
