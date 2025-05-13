@@ -25,5 +25,5 @@ cd "$SAM2_ASSETS_DIR"
 
 # === RUN NODE ===
 echo "🚀 Launching SAM2 node..."
-ros2 run sam2_realtime sam2_realtime_node
-# ros2 launch sam2_realtime_bringup sam2_realtime_node.launch.py
+# ros2 run sam2_realtime sam2_realtime_node
+ros2 launch sam2_realtime_bringup sam2_realtime_node.launch.py

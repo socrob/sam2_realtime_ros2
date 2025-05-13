@@ -23,7 +23,7 @@ class SAM2Node(LifecycleNode):
         super().__init__('sam2_node')
 
         # Declare parameters
-        self.declare_parameter('image_topic', '/camera/camera/rgb/image_raw')
+        self.declare_parameter('image_topic', '/camera/camera/color/image_raw')
         self.declare_parameter('image_reliability', QoSReliabilityPolicy.BEST_EFFORT)
         self.declare_parameter('model_cfg', 'configs/sam2.1/sam2.1_hiera_s.yaml')
         self.declare_parameter('checkpoint', 'checkpoints/sam2.1_hiera_small.pt')
