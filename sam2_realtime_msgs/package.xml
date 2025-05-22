@@ -23,6 +23,7 @@
   <!-- Message-related dependencies -->
   <depend>std_msgs</depend>
   <depend>geometry_msgs</depend>
+  <depend>sensor_msgs</depend>
 
   <!-- Export section for ROS build system -->
   <export>

@@ -13,8 +13,8 @@ class YOLOPromptNode(Node):
     def __init__(self):
         super().__init__('yolo_prompt_node')
 
-        # self.declare_parameter('image_topic', '/camera/camera/color/image_raw')
-        self.declare_parameter('image_topic', '/k4a/rgb/image_raw')
+        self.declare_parameter('image_topic', '/camera/camera/color/image_raw')
+        # self.declare_parameter('image_topic', '/k4a/rgb/image_raw')
         self.declare_parameter('yolo_model', 'yolov8n.pt')
         self.declare_parameter('confidence_threshold', 0.5)
 

@@ -9,10 +9,11 @@ from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDur
 from sensor_msgs.msg import Image
 from sam2_realtime_msgs.msg import PromptBbox
 from cv_bridge import CvBridge
+from sam2_realtime_msgs.msg import TrackedObject
 
 import torch
 import numpy as np
-import cv2, os
+import cv2
 
 from sam2.build_sam import build_sam2_camera_predictor
 
@@ -23,8 +24,8 @@ class SAM2Node(LifecycleNode):
         super().__init__('sam2_node')
 
         # Declare parameters
-        # self.declare_parameter('image_topic', '/camera/camera/color/image_raw')
-        self.declare_parameter('image_topic', '/k4a/rgb/image_raw')
+        self.declare_parameter('image_topic', '/camera/camera/color/image_raw')
+        # self.declare_parameter('image_topic', '/k4a/rgb/image_raw')
         self.declare_parameter('image_reliability', QoSReliabilityPolicy.BEST_EFFORT)
         self.declare_parameter('model_cfg', 'configs/sam2.1/sam2.1_hiera_s.yaml')
         self.declare_parameter('checkpoint', 'checkpoints/sam2.1_hiera_small.pt')
@@ -68,7 +69,7 @@ class SAM2Node(LifecycleNode):
             self.cv_bridge = CvBridge()
             
             # Lifecycle Publisher
-            #TODO
+            self._pub = self.create_lifecycle_publisher(TrackedObject, "/sam2/mask", 10)
 
             super().on_configure(state)
             self.get_logger().info('[sam2_node] SAM2 model loaded')
@@ -171,6 +172,13 @@ class SAM2Node(LifecycleNode):
             for i in range(len(self.out_obj_ids)):
                 out_mask = (self.out_mask_logits[i] > 0.0).permute(1, 2, 0).byte().cuda()
                 all_mask = out_mask.cpu().numpy() * 255
+
+            # Publish msg
+            sam2_msg = TrackedObject()
+            sam2_msg.header = msg.header
+            sam2_msg.id = 1
+            sam2_msg.mask = self.cv_bridge.cv2_to_imgmsg(all_mask, encoding='mono8')
+            self._pub.publish(sam2_msg)
 
             all_mask = cv2.cvtColor(all_mask, cv2.COLOR_GRAY2RGB)
             frame = cv2.addWeighted(frame, 1, all_mask, 0.5, 0)
