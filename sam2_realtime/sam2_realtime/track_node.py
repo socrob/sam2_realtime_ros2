@@ -187,31 +187,35 @@ class TrackNode(LifecycleNode):
 
         transform = self.get_transform(depth_info_msg.header.frame_id)
         if transform is None:
+            self.get_logger().info("No transform")
             return new_detections_msg
+        
+        self.get_logger().info("After transform")
+        return new_detections_msg
 
-        depth_image = self.cv_bridge.imgmsg_to_cv2(depth_msg, desired_encoding="passthrough")
-        mask = self.cv_bridge.imgmsg_to_cv2(detections_msg.mask, desired_encoding="mono8")
+        # depth_image = self.cv_bridge.imgmsg_to_cv2(depth_msg, desired_encoding="passthrough")
+        # mask = self.cv_bridge.imgmsg_to_cv2(detections_msg.mask, desired_encoding="mono8")
 
-        # Try using centroid of the mask first
-        cx, cy = self.get_centroid_of_mask(mask)
-        if cx == -1 or cy == -1 or mask[int(cy), int(cx), 0] != 255:
-            cx, cy = self.get_furthest_point_from_mask_edge(mask)
-            if cx == -1 or cy == -1:
-                self.get_logger().warn('[track_node] Could not compute a valid point in the mask')
-                return new_detections_msg
+        # # Try using centroid of the mask first
+        # cx, cy = self.get_centroid_of_mask(mask)
+        # if cx == -1 or cy == -1 or mask[int(cy), int(cx), 0] != 255:
+        #     cx, cy = self.get_furthest_point_from_mask_edge(mask)
+        #     if cx == -1 or cy == -1:
+        #         self.get_logger().warn('[track_node] Could not compute a valid point in the mask')
+        #         return new_detections_msg
 
-        # Estimate depth
-        depth = self.get_median_depth(int(cy), int(cx), depth_image, mask)
-        if depth <= 0:
-            return new_detections_msg
+        # # Estimate depth
+        # depth = self.get_median_depth(int(cy), int(cx), depth_image, mask)
+        # if depth <= 0:
+        #     return new_detections_msg
 
-        # Convert depth image coordinates to 3D camera space
-        k = depth_info_msg.k
-        fx, fy, px, py = k[0], k[4], k[2], k[5]
+        # # Convert depth image coordinates to 3D camera space
+        # k = depth_info_msg.k
+        # fx, fy, px, py = k[0], k[4], k[2], k[5]
 
-        z = depth / self.depth_image_units_divisor
-        x = (int(cx) - px) * z / fx
-        y = (int(cy) - py) * z / fy
+        # z = depth / self.depth_image_units_divisor
+        # x = (int(cx) - px) * z / fx
+        # y = (int(cy) - py) * z / fy
 
         # TODO: Apply Kalman Filter here (if needed)
         # TODO: Optionally apply frame transformation here

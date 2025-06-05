@@ -24,8 +24,8 @@ class SAM2Node(LifecycleNode):
         super().__init__('sam2_node')
 
         # Declare parameters
-        self.declare_parameter('image_topic', '/camera/camera/color/image_raw')
-        # self.declare_parameter('image_topic', '/k4a/rgb/image_raw')
+        # self.declare_parameter('image_topic', '/camera/camera/color/image_raw')
+        self.declare_parameter('image_topic', '/k4a/rgb/image_raw')
         self.declare_parameter('image_reliability', QoSReliabilityPolicy.BEST_EFFORT)
         self.declare_parameter('model_cfg', 'configs/sam2.1/sam2.1_hiera_s.yaml')
         self.declare_parameter('checkpoint', 'checkpoints/sam2.1_hiera_small.pt')
@@ -67,7 +67,7 @@ class SAM2Node(LifecycleNode):
             self.predictor = build_sam2_camera_predictor(self.model_cfg, self.checkpoint)
 
             self.cv_bridge = CvBridge()
-            
+
             # Lifecycle Publisher
             self._pub = self.create_lifecycle_publisher(TrackedObject, "/sam2/mask", 10)
 
@@ -75,7 +75,7 @@ class SAM2Node(LifecycleNode):
             self.get_logger().info('[sam2_node] SAM2 model loaded')
 
             return TransitionCallbackReturn.SUCCESS
-        
+
         except Exception as e:
             self.get_logger().error(f"[sam2_node] Exception during configuration: {e}")
             self.get_logger().error(traceback.format_exc())
@@ -84,7 +84,7 @@ class SAM2Node(LifecycleNode):
     def on_activate(self, state: LifecycleState) -> TransitionCallbackReturn:
         try:
             self.get_logger().info('[sam2_node] Activating...')
-            
+
             self.image_sub = self.create_subscription(Image, self.image_topic, self.image_cb, self.qos)
             self.prompt_sub = self.create_subscription(PromptBbox, '/sam2/init_prompt', self.prompt_cb, 10)
             self.prompt_mask_sub = self.create_subscription(Image, '/sam2/init_prompt_mask', self.prompt_mask_cb, 10)
@@ -92,7 +92,7 @@ class SAM2Node(LifecycleNode):
             super().on_activate(state)
             self.get_logger().info('[sam2_node] Subscriptions activated')
             return TransitionCallbackReturn.SUCCESS
-        
+
         except Exception as e:
             self.get_logger().error(f"[sam2_node] Exception during activation: {e}")
             self.get_logger().error(traceback.format_exc())
@@ -135,11 +135,16 @@ class SAM2Node(LifecycleNode):
             self.get_logger().error(f"[sam2_node] Exception during shutdown: {e}")
             self.get_logger().error(traceback.format_exc())
             return TransitionCallbackReturn.FAILURE
+        
+    def destroy_prompt_subscribers(self):
+        self.destroy_subscription(self.prompt_sub)
+        self.destroy_subscription(self.prompt_mask_sub)
+        self.get_logger().info("[sam2_node] Destroyed prompt subscribers!")
 
     def prompt_cb(self, msg: PromptBbox):
         self.bbox = (msg.x_min, msg.y_min, msg.x_max, msg.y_max)
         self.get_logger().info(f"[sam2_node] Received init prompt: {self.bbox}")
-    
+
     def prompt_mask_cb(self, msg: Image):
         self.mask_prompt = self.cv_bridge.imgmsg_to_cv2(msg, desired_encoding='mono8')
         self.get_logger().info("[sam2_node] Received mask prompt")
@@ -149,22 +154,25 @@ class SAM2Node(LifecycleNode):
         height, width = frame.shape[:2]
         frame = cv2.flip(frame, 1)
 
+        if self.bbox is None and self.mask_prompt is None:
+            return
+
         if not self.initialized:
-            self.predictor.load_first_frame(frame)
             if self.mask_prompt is not None:
                 mask_normalized = self.mask_prompt.astype(np.float32) / 255.0
+                self.predictor.load_first_frame(frame)
                 _, self.out_obj_ids, self.out_mask_logits = self.predictor.add_new_mask(
                     frame_idx=0, obj_id=1, mask=mask_normalized
                 )
                 self.get_logger().info("[sam2_node] Initialized with mask prompt")
-            elif self.bbox is not None:
+            else:
                 bbox_np = np.array([[self.bbox[0], self.bbox[1]], [self.bbox[2], self.bbox[3]]], dtype=np.float32)
+                self.predictor.load_first_frame(frame)
                 _, self.out_obj_ids, self.out_mask_logits = self.predictor.add_new_prompt(
                     frame_idx=0, obj_id=1, bbox=bbox_np
                 )
                 self.get_logger().info("[sam2_node] Initialized with bbox prompt")
-            else:
-                return
+                
             self.initialized = True
         else:
             self.out_obj_ids, self.out_mask_logits = self.predictor.track(frame)

@@ -15,4 +15,6 @@ fi
 
 # === RUN NODE ===
 echo "🚀 Launching YOLO Mask Prompt node..."
-ros2 run sam2_realtime yolo_mask_prompt_node
+ros2 run sam2_realtime yolo_mask_prompt_node --ros-args \
+  -p confidence_threshold:=0.8 \
+  -p min_mask_area:=3000
