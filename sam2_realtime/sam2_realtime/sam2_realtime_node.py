@@ -2,6 +2,7 @@
 
 import traceback
 import rclpy
+from rclpy.clock import Clock
 from rclpy.lifecycle import LifecycleNode
 from rclpy.lifecycle import TransitionCallbackReturn
 from rclpy.lifecycle import LifecycleState
@@ -10,7 +11,6 @@ from sensor_msgs.msg import Image
 from sam2_realtime_msgs.msg import PromptBbox
 from cv_bridge import CvBridge
 from sam2_realtime_msgs.msg import TrackedObject
-
 import torch
 import numpy as np
 import cv2
@@ -181,11 +181,19 @@ class SAM2Node(LifecycleNode):
                 out_mask = (self.out_mask_logits[i] > 0.0).permute(1, 2, 0).byte().cuda()
                 all_mask = out_mask.cpu().numpy() * 255
 
+
             # Publish msg
             sam2_msg = TrackedObject()
-            sam2_msg.header = msg.header
+            now = Clock().now().to_msg()
+
+            sam2_msg.header.stamp = now
+            sam2_msg.header.frame_id = msg.header.frame_id
             sam2_msg.id = 1
+
             sam2_msg.mask = self.cv_bridge.cv2_to_imgmsg(all_mask, encoding='mono8')
+            sam2_msg.mask.header.stamp = now
+            sam2_msg.mask.header.frame_id = msg.header.frame_id
+
             self._pub.publish(sam2_msg)
 
             all_mask = cv2.cvtColor(all_mask, cv2.COLOR_GRAY2RGB)

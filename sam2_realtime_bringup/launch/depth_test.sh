@@ -16,8 +16,4 @@ fi
 
 # Run the tracking node via launch file
 echo "🚀 Launching Track Node..."
-ros2 run sam2_realtime track_node
-
-# Run the tracking node via launch file
-# echo "🚀 Launching Track Node..."
-# ros2 launch sam2_realtime_bringup track_node.launch.py
+ros2 run sam2_realtime depth_test

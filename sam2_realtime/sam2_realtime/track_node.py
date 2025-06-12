@@ -1,42 +1,48 @@
-#!/usr/bin/env python3
 
-import traceback
+import cv2
+import numpy as np
+from typing import Union, Tuple, Optional
+
 import rclpy
+from rclpy.qos import QoSProfile
+from rclpy.qos import QoSHistoryPolicy
+from rclpy.qos import QoSDurabilityPolicy
+from rclpy.qos import QoSReliabilityPolicy
 from rclpy.lifecycle import LifecycleNode
 from rclpy.lifecycle import TransitionCallbackReturn
 from rclpy.lifecycle import LifecycleState
-from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
-from sensor_msgs.msg import Image, CameraInfo
-from std_msgs.msg import Header
-from geometry_msgs.msg import TransformStamped
 
-from sam2_realtime_msgs.msg import TrackedObject
-
-from cv_bridge import CvBridge
 import message_filters
+from cv_bridge import CvBridge
 from tf2_ros.buffer import Buffer
 from tf2_ros import TransformException
 from tf2_ros.transform_listener import TransformListener
+from tf2_ros import TransformBroadcaster
 
-import numpy as np
-from typing import Tuple, Union, Optional
-import cv2
+
+from sensor_msgs.msg import CameraInfo, Image
+from geometry_msgs.msg import TransformStamped
+from rclpy.clock import Clock
 
 from shapely.geometry import Polygon
-from shapely.algorithms import polylabel
+from shapely.algorithms.polylabel import polylabel
+
+
+from sam2_realtime_msgs.msg import TrackedObject
 
 class TrackNode(LifecycleNode):
 
-    def __init__(self):
-        super().__init__('track_node')
+    def __init__(self) -> None:
+        super().__init__("track_node")
 
-        # Declare parameters
-        self.declare_parameter('depth_topic', '/camera/camera/extrinsics/depth_to_color')
-        self.declare_parameter('depth_info', '/camera/camera/depth/camera_info')
+        # Parameters
+        self.declare_parameter('depth_topic', '/camera/camera/depth/image_rect_raw')
+        self.declare_parameter('cam_info', '/camera/camera/color/camera_info')
+        # self.declare_parameter('depth_topic', '/k4a/depth_to_rgb/image_raw')
+        # self.declare_parameter('cam_info', '/k4a/depth_to_rgb/camera_info')
         self.declare_parameter('sam2_mask_topic', '/sam2/mask')
-
-        self.declare_parameter("target_frame", "base_link")
-        self.declare_parameter("depth_filter_percentage", 0.2)
+        self.declare_parameter("target_frame", "camera_color_optical_frame")
+        self.declare_parameter("depth_filter_percentage", 0.3)
         self.declare_parameter("depth_image_units_divisor", 1000)
         self.declare_parameter("depth_image_reliability", QoSReliabilityPolicy.BEST_EFFORT)
         self.declare_parameter("depth_info_reliability", QoSReliabilityPolicy.BEST_EFFORT)
@@ -45,177 +51,184 @@ class TrackNode(LifecycleNode):
         self.cv_bridge = CvBridge()
 
     def on_configure(self, state: LifecycleState) -> TransitionCallbackReturn:
-        try:
-            self.get_logger().info('[track_node] Configuring...')
-
-            # Load parameters
-            self.depth_topic = self.get_parameter('depth_topic').get_parameter_value().string_value
-            self.depth_info = self.get_parameter('depth_info').get_parameter_value().string_value
-            self.sam2_mask_topic = self.get_parameter('sam2_mask_topic').get_parameter_value().string_value
-
-            self.target_frame = (self.get_parameter("target_frame").get_parameter_value().string_value)
-            self.depth_filter_percentage = (self.get_parameter("depth_filter_percentage").get_parameter_value().double_value)
-            self.depth_image_units_divisor = (self.get_parameter("depth_image_units_divisor").get_parameter_value().integer_value)
-            dimg_reliability = (self.get_parameter("depth_image_reliability").get_parameter_value().integer_value)
-
-            self.depth_image_qos_profile = QoSProfile(
-                reliability=dimg_reliability,
-                history=QoSHistoryPolicy.KEEP_LAST,
-                durability=QoSDurabilityPolicy.VOLATILE,
-                depth=1,
-            )
-
-            dinfo_reliability = (self.get_parameter("depth_info_reliability").get_parameter_value().integer_value)
-
-            self.depth_info_qos_profile = QoSProfile(
-                reliability=dinfo_reliability,
-                history=QoSHistoryPolicy.KEEP_LAST,
-                durability=QoSDurabilityPolicy.VOLATILE,
-                depth=1,
-            )
-            self.tf_listener = TransformListener(self.tf_buffer, self)
-
-            # Publisher
-            self._pub = self.create_publisher(TrackedObject, "tracked_object", 10)
-
-            super().on_configure(state)
-            self.get_logger().info('[track_node] Configured')
-
-            return TransitionCallbackReturn.SUCCESS
+        self.get_logger().info(f"[{self.get_name()}] Configuring...")
         
-        except Exception as e:
-            self.get_logger().error(f"[track_node] Exception during configuration: {e}")
-            self.get_logger().error(traceback.format_exc())
-            return TransitionCallbackReturn.FAILURE
+        self.depth_topic = self.get_parameter('depth_topic').get_parameter_value().string_value
+        self.cam_info = self.get_parameter('cam_info').get_parameter_value().string_value
+        self.sam2_mask_topic = self.get_parameter('sam2_mask_topic').get_parameter_value().string_value
+
+        self.target_frame = (
+            self.get_parameter("target_frame").get_parameter_value().string_value
+        )
+        self.depth_filter_percentage = (
+            self.get_parameter("depth_filter_percentage")
+            .get_parameter_value()
+            .double_value
+        )
+        self.depth_image_units_divisor = (
+            self.get_parameter("depth_image_units_divisor")
+            .get_parameter_value()
+            .integer_value
+        )
+        dimg_reliability = (
+            self.get_parameter("depth_image_reliability")
+            .get_parameter_value()
+            .integer_value
+        )
+
+        self.depth_image_qos_profile = QoSProfile(
+            reliability=dimg_reliability,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            durability=QoSDurabilityPolicy.VOLATILE,
+            depth=1,
+        )
+
+        dinfo_reliability = (
+            self.get_parameter("depth_info_reliability")
+            .get_parameter_value()
+            .integer_value
+        )
+
+        self.depth_info_qos_profile = QoSProfile(
+            reliability=dinfo_reliability,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            durability=QoSDurabilityPolicy.VOLATILE,
+            depth=1,
+        )
+
+        # TFs
+        self.tf_listener = TransformListener(self.tf_buffer, self)
+        self.tf_broadcaster = TransformBroadcaster(self)
+
+        # Tracker Publisher
+        self._pub = self.create_publisher(TrackedObject, "tracked_object", 10)
+
+        super().on_configure(state)
+        self.get_logger().info(f"[{self.get_name()}] Configured")
+
+        return TransitionCallbackReturn.SUCCESS
 
     def on_activate(self, state: LifecycleState) -> TransitionCallbackReturn:
-        try:
-            self.get_logger().info('[track_node] Activating...')
+        self.get_logger().info(f"[{self.get_name()}] Activating...")
 
-            # Subscribers
-            self.depth_sub = message_filters.Subscriber(self, Image, self.depth_topic, qos_profile=self.depth_image_qos_profile)
-            self.depth_info_sub = message_filters.Subscriber(self, CameraInfo, self.depth_info, qos_profile=self.depth_info_qos_profile)
-            self.detections_sub = message_filters.Subscriber(self, TrackedObject, self.sam2_mask_topic)
+        # subs
+        self.depth_sub = message_filters.Subscriber(
+            self, Image, self.depth_topic, qos_profile=self.depth_image_qos_profile
+        )
+        self.cam_info_sub = message_filters.Subscriber(
+            self, CameraInfo, self.cam_info, qos_profile=self.depth_info_qos_profile
+        )
+        self.detections_sub = message_filters.Subscriber(
+            self, TrackedObject, self.sam2_mask_topic
+        )
 
-            self._synchronizer = message_filters.ApproximateTimeSynchronizer((self.depth_sub, self.depth_info_sub, self.detections_sub), 10, 0.5)
-            self._synchronizer.registerCallback(self.on_detections)
+        self._synchronizer = message_filters.ApproximateTimeSynchronizer(
+            (self.depth_sub, self.cam_info_sub, self.detections_sub), 10, 0.5
+        )
+        self._synchronizer.registerCallback(self.on_detections)
 
-            super().on_activate(state)
-            self.get_logger().info('[track_node] Subscriptions activated')
-            return TransitionCallbackReturn.SUCCESS
-        
-        except Exception as e:
-            self.get_logger().error(f"[track_node] Exception during activation: {e}")
-            self.get_logger().error(traceback.format_exc())
-            return TransitionCallbackReturn.FAILURE
+        super().on_activate(state)
+        self.get_logger().info(f"[{self.get_name()}] Activated")
+
+        return TransitionCallbackReturn.SUCCESS
 
     def on_deactivate(self, state: LifecycleState) -> TransitionCallbackReturn:
-        try:
-            self.get_logger().info('[track_node] Deactivating...')
-            self.destroy_subscription(self.depth_sub.sub)
-            self.destroy_subscription(self.depth_info_sub.sub)
-            self.destroy_subscription(self.detections_sub.sub)
-            del self._synchronizer
-            super().on_deactivate(state)
-            self.get_logger().info('[track_node] Deactivated')
-            return TransitionCallbackReturn.SUCCESS
-        except Exception as e:
-            self.get_logger().error(f"[track_node] Exception during deactivation: {e}")
-            self.get_logger().error(traceback.format_exc())
-            return TransitionCallbackReturn.FAILURE
+        self.get_logger().info(f"[{self.get_name()}] Deactivating...")
+
+        self.destroy_subscription(self.depth_sub.sub)
+        self.destroy_subscription(self.cam_info_sub.sub)
+        self.destroy_subscription(self.detections_sub.sub)
+
+        del self._synchronizer
+
+        super().on_deactivate(state)
+        self.get_logger().info(f"[{self.get_name()}] Deactivated")
+
+        return TransitionCallbackReturn.SUCCESS
 
     def on_cleanup(self, state: LifecycleState) -> TransitionCallbackReturn:
-        try:
-            self.get_logger().info('[track_node] Cleaning up...')
-            del self.tf_listener
-            self.destroy_publisher(self._pub)
-            super().on_cleanup(state)
-            return TransitionCallbackReturn.SUCCESS
-        except Exception as e:
-            self.get_logger().error(f"[track_node] Exception during cleanup: {e}")
-            self.get_logger().error(traceback.format_exc())
-            return TransitionCallbackReturn.FAILURE
+        self.get_logger().info(f"[{self.get_name()}] Cleaning up...")
+
+        del self.tf_listener
+
+        self.destroy_publisher(self._pub)
+
+        super().on_cleanup(state)
+        self.get_logger().info(f"[{self.get_name()}] Cleaned up")
 
     def on_shutdown(self, state: LifecycleState) -> TransitionCallbackReturn:
-        try:
-            self.get_logger().info('[track_node] Shutting down...')
-            super().on_cleanup(state)
-            return TransitionCallbackReturn.SUCCESS
-        except Exception as e:
-            self.get_logger().error(f"[track_node] Exception during shutdown: {e}")
-            self.get_logger().error(traceback.format_exc())
-            return TransitionCallbackReturn.FAILURE
-
+        self.get_logger().info(f"[{self.get_name()}] Shutting down...")
+        super().on_cleanup(state)
+        self.get_logger().info(f"[{self.get_name()}] Shutted down")
+        return TransitionCallbackReturn.SUCCESS
 
     def on_detections(
         self,
         depth_msg: Image,
-        depth_info_msg: CameraInfo,
+        cam_info_msg: CameraInfo,
         detections_msg: TrackedObject,
     ) -> None:
 
-        new_detections_msg = TrackedObject()
-        new_detections_msg.header = detections_msg.header
-        new_detections_msg = self.process_detections(
-            depth_msg, depth_info_msg, detections_msg, new_detections_msg
-        )
-        self._pub.publish(new_detections_msg)
-        # Publish TF
-    
+        tracker_msg = TrackedObject()
+        now = Clock().now().to_msg()
+        tracker_msg.header.stamp = now
+        tracker_msg.header.frame_id = self.target_frame
+        
+        tracker_msg.id = detections_msg.id
+        tracker_msg.mask = detections_msg.mask
+        tracker_msg.mask.header.stamp = now
+        tracker_msg.mask.header.frame_id = self.target_frame
 
-    def process_detections(
-        self,
-        depth_msg: Image,
-        depth_info_msg: CameraInfo,
-        detections_msg: TrackedObject,
-        new_detections_msg: TrackedObject,
-    ) -> TrackedObject:
+        tracker_msg = self.process_detections(depth_msg, cam_info_msg, tracker_msg)
+        self._pub.publish(tracker_msg)
+
+   
+    def process_detections(self, depth_msg: Image, cam_info_msg: CameraInfo, tracker_msg: TrackedObject) -> TrackedObject:
         """
         Processes SAM2 mask and depth data to estimate 3D position of the tracked object.
 
         Args:
             depth_msg (Image): Depth image.
-            depth_info_msg (CameraInfo): Camera intrinsic matrix info.
-            detections_msg (TrackedObject): Input message with mask and header.
-            new_detections_msg (TrackedObject): Output message to populate.
+            cam_info_msg (CameraInfo): Camera intrinsic matrix info.
+            tracker_msg (TrackedObject): Output message to populate.
 
         Returns:
             TrackedObject: Updated message with 3D position filled in.
         """
-        if not detections_msg.mask:
-            return new_detections_msg
+        # If mask is not available, there is no point in tracking
+        if not tracker_msg.mask:
+            return tracker_msg
 
-        transform = self.get_transform(depth_info_msg.header.frame_id)
+        # Compute transform to desired frame
+        transform = self.get_transform(cam_info_msg.header.frame_id)
         if transform is None:
             self.get_logger().info("No transform")
-            return new_detections_msg
+            return tracker_msg
         
-        self.get_logger().info("After transform")
-        return new_detections_msg
+        # Convert imgs
+        depth_image = self.cv_bridge.imgmsg_to_cv2(depth_msg, desired_encoding="passthrough")
+        mask = self.cv_bridge.imgmsg_to_cv2(tracker_msg.mask, desired_encoding="mono8")
 
-        # depth_image = self.cv_bridge.imgmsg_to_cv2(depth_msg, desired_encoding="passthrough")
-        # mask = self.cv_bridge.imgmsg_to_cv2(detections_msg.mask, desired_encoding="mono8")
+        # Try using centroid of the mask first
+        cx, cy = self.get_centroid_of_mask(mask)
+        if cx == -1 or cy == -1 or mask[int(cy), int(cx)] != 255:
+            cx, cy = self.get_furthest_point_from_mask_edge(mask)
+            if cx == -1 or cy == -1:
+                self.get_logger().warn('[track_node] Could not compute a valid point in the mask')
+                return tracker_msg
+            
+        # Estimate depth of a square centered in cx, cy
+        depth = self.get_median_depth(int(cy), int(cx), depth_image, mask)
+        if depth <= 0:
+            return tracker_msg
 
-        # # Try using centroid of the mask first
-        # cx, cy = self.get_centroid_of_mask(mask)
-        # if cx == -1 or cy == -1 or mask[int(cy), int(cx), 0] != 255:
-        #     cx, cy = self.get_furthest_point_from_mask_edge(mask)
-        #     if cx == -1 or cy == -1:
-        #         self.get_logger().warn('[track_node] Could not compute a valid point in the mask')
-        #         return new_detections_msg
+        # Convert depth image coordinates to 3D camera space
+        k = cam_info_msg.k
+        fx, fy, px, py = k[0], k[4], k[2], k[5]
 
-        # # Estimate depth
-        # depth = self.get_median_depth(int(cy), int(cx), depth_image, mask)
-        # if depth <= 0:
-        #     return new_detections_msg
-
-        # # Convert depth image coordinates to 3D camera space
-        # k = depth_info_msg.k
-        # fx, fy, px, py = k[0], k[4], k[2], k[5]
-
-        # z = depth / self.depth_image_units_divisor
-        # x = (int(cx) - px) * z / fx
-        # y = (int(cy) - py) * z / fy
+        z = depth / self.depth_image_units_divisor
+        x = (int(cx) - px) * z / fx
+        y = (int(cy) - py) * z / fy
 
         # TODO: Apply Kalman Filter here (if needed)
         # TODO: Optionally apply frame transformation here
@@ -223,20 +236,42 @@ class TrackNode(LifecycleNode):
         self.get_logger().info(f"[track_node] 3D position: x={x:.2f}, y={y:.2f}, z={z:.2f}")
 
         # Populate output message
-        new_detections_msg.position.x = x
-        new_detections_msg.position.y = y
-        new_detections_msg.position.z = z
+        tracker_msg.position.x = x
+        tracker_msg.position.y = y
+        tracker_msg.position.z = z
 
-        return new_detections_msg
+        # Publish TF
+        self.publish_tf_from_tracked_object(tracker_msg=tracker_msg)
+        
+        return tracker_msg
+    
 
+    def publish_tf_from_tracked_object(self, tracker_msg: TrackedObject):
+        """
+        Publishes a TF transform from the tracked object's position.
 
-    def get_median_depth(
-        self,
-        cy: int,
-        cx: int,
-        depth_image: np.ndarray,
-        mask: Optional[np.ndarray]
-    ) -> float:
+        Args:
+            tracker_msg (TrackedObject): Message containing position and id.
+        """
+        t = TransformStamped()
+        t.header.stamp = self.get_clock().now().to_msg()
+        t.header.frame_id = tracker_msg.header.frame_id
+        t.child_frame_id = f"tracked_object_{tracker_msg.id}"
+
+        t.transform.translation.x = tracker_msg.position.x
+        t.transform.translation.y = tracker_msg.position.y
+        t.transform.translation.z = tracker_msg.position.z
+
+        # Identity rotation
+        t.transform.rotation.x = 0.0
+        t.transform.rotation.y = 0.0
+        t.transform.rotation.z = 0.0
+        t.transform.rotation.w = 1.0
+
+        self.tf_broadcaster.sendTransform(t)
+    
+
+    def get_median_depth(self, cy: int, cx: int, depth_image: np.ndarray, mask: Optional[np.ndarray]) -> float:
         """
         Calculates the median depth within a rectangular region around (cy, cx),
         optionally filtering with a binary mask.
@@ -340,8 +375,7 @@ class TrackNode(LifecycleNode):
         cy, cx = np.where(distance_transform == distance_transform.max())
 
         return int(cx[0]), int(cy[0])
-
-
+    
 
     def get_transform(self, frame_id: str) -> Tuple[np.ndarray]:
         # transform position from image frame to target_frame

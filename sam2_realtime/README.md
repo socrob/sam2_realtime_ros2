@@ -1,0 +1,15 @@
+- Test different ways of computing the center of the mask;
+- Confirm the center is computed correctly (Yolo vs tiago obj local);
+- Optimize Kalman Filter;
+- Confirm TF publication;
+
+
+# Depth info
+Realsense
+depth_scale = 1000
+
+Orbbec
+depth_scale = 1
+
+Microsoft Azure
+depth_scale = 1

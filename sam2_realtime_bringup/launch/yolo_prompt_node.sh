@@ -15,9 +15,17 @@ fi
 
 # === RUN NODE ===
 echo "🚀 Launching YOLO Prompt node..."
+# ros2 run sam2_realtime yolo_prompt_node \
+#   --ros-args \
+#   -p image_topic:=/k4a/rgb/image_raw \
+#   -p yolo_model:=yolov8n.pt \
+#   -p confidence_threshold:=0.9 \
+#   -p min_box_area:=2000 \
+#   -p max_aspect_ratio:=3.0
+
 ros2 run sam2_realtime yolo_prompt_node \
   --ros-args \
-  -p image_topic:=/k4a/rgb/image_raw \
+  -p image_topic:=/camera/camera/color/image_raw \
   -p yolo_model:=yolov8n.pt \
   -p confidence_threshold:=0.9 \
   -p min_box_area:=2000 \
