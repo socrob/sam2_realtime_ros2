@@ -286,6 +286,9 @@ class TrackNode(LifecycleNode):
         tracker_msg.position.y = y
         tracker_msg.position.z = z
 
+        tracker_msg.centroid_x = float(cx)
+        tracker_msg.centroid_y = float(cy)
+
         # Publish TF
         self.publish_tf_from_tracked_object(tracker_msg=tracker_msg)
         
