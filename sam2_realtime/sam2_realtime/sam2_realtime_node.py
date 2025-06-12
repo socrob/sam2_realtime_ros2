@@ -159,7 +159,6 @@ class SAM2Node(LifecycleNode):
     def image_cb(self, msg: Image):
         frame = self.cv_bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
         height, width = frame.shape[:2]
-        frame = cv2.flip(frame, 1)
 
         if self.bbox is None and self.mask_prompt is None:
             return
