@@ -27,8 +27,9 @@ from rclpy.clock import Clock
 from shapely.geometry import Polygon
 from shapely.algorithms.polylabel import polylabel
 
-
 from sam2_realtime_msgs.msg import TrackedObject
+
+from sam2_realtime.ekf import EKF
 
 class TrackNode(LifecycleNode):
 
@@ -36,19 +37,24 @@ class TrackNode(LifecycleNode):
         super().__init__("track_node")
 
         # Parameters
-        self.declare_parameter('depth_topic', '/camera/camera/depth/image_rect_raw')
-        self.declare_parameter('cam_info', '/camera/camera/color/camera_info')
-        # self.declare_parameter('depth_topic', '/k4a/depth_to_rgb/image_raw')
-        # self.declare_parameter('cam_info', '/k4a/depth_to_rgb/camera_info')
-        self.declare_parameter('sam2_mask_topic', '/sam2/mask')
-        self.declare_parameter("target_frame", "camera_color_optical_frame")
+        # self.declare_parameter('depth_topic', '/camera/camera/depth/image_rect_raw')
+        # self.declare_parameter('cam_info', '/camera/camera/color/camera_info')
+        # self.declare_parameter("target_frame", "camera_color_optical_frame")
+        # self.declare_parameter("depth_image_units_divisor", 1000)
+        
+        self.declare_parameter('depth_topic', '/k4a/depth_to_rgb/image_raw')
+        self.declare_parameter('cam_info', '/k4a/rgb/camera_info')
+        self.declare_parameter("target_frame", "camera_base")
+        self.declare_parameter("depth_image_units_divisor", 1)
+        
         self.declare_parameter("depth_filter_percentage", 0.3)
-        self.declare_parameter("depth_image_units_divisor", 1000)
+        self.declare_parameter('sam2_mask_topic', '/sam2/mask')
         self.declare_parameter("depth_image_reliability", QoSReliabilityPolicy.BEST_EFFORT)
         self.declare_parameter("depth_info_reliability", QoSReliabilityPolicy.BEST_EFFORT)
 
         self.tf_buffer = Buffer()
         self.cv_bridge = CvBridge()
+        self.ekf = None
 
     def on_configure(self, state: LifecycleState) -> TransitionCallbackReturn:
         self.get_logger().info(f"[{self.get_name()}] Configuring...")
@@ -103,6 +109,32 @@ class TrackNode(LifecycleNode):
         # Tracker Publisher
         self._pub = self.create_publisher(TrackedObject, "tracked_object", 10)
 
+        #### EKF Params
+        self.initial_state = [0, 0, 0, 0, 0, 0]
+        
+        # Define process noise covariance (Q)
+        self.process_noise_cov=[[1e-1, 0, 0, 0, 0, 0],
+                                [0, 1e-1, 0, 0, 0, 0],
+                                [0, 0, 1e-1, 0, 0, 0],
+                                [0, 0, 0, 1e-1, 0, 0],
+                                [0, 0, 0, 0, 1e-1, 0],
+                                [0, 0, 0, 0, 0, 1e-1]]
+        
+        # Define measurement noise covariance (R) for 3D measurements
+        self.measurement_noise_cov = np.eye(3)/10
+        # self.measurement_noise_cov = np.eye(6)/10
+
+        # Initial covariance matrix
+        self.initial_covariance=[[1e-1, 0, 0, 0, 0, 0],
+                                [0, 1e-1, 0, 0, 0, 0],
+                                [0, 0, 1e-1, 0, 0, 0],
+                                [0, 0, 0, 1e-1, 0, 0],
+                                [0, 0, 0, 0, 1e-1, 0],
+                                [0, 0, 0, 0, 0, 1e-1]]
+        
+        # Time step
+        self.dt = 1.0
+
         super().on_configure(state)
         self.get_logger().info(f"[{self.get_name()}] Configured")
 
@@ -111,7 +143,7 @@ class TrackNode(LifecycleNode):
     def on_activate(self, state: LifecycleState) -> TransitionCallbackReturn:
         self.get_logger().info(f"[{self.get_name()}] Activating...")
 
-        # subs
+        # Subscribers
         self.depth_sub = message_filters.Subscriber(
             self, Image, self.depth_topic, qos_profile=self.depth_image_qos_profile
         )
@@ -127,6 +159,9 @@ class TrackNode(LifecycleNode):
         )
         self._synchronizer.registerCallback(self.on_detections)
 
+        ### EKF Params
+        self.initialize_ekf = True
+
         super().on_activate(state)
         self.get_logger().info(f"[{self.get_name()}] Activated")
 
@@ -140,6 +175,7 @@ class TrackNode(LifecycleNode):
         self.destroy_subscription(self.detections_sub.sub)
 
         del self._synchronizer
+        self.ekf = None
 
         super().on_deactivate(state)
         self.get_logger().info(f"[{self.get_name()}] Deactivated")
@@ -150,6 +186,7 @@ class TrackNode(LifecycleNode):
         self.get_logger().info(f"[{self.get_name()}] Cleaning up...")
 
         del self.tf_listener
+        del self.tf_broadcaster
 
         self.destroy_publisher(self._pub)
 
@@ -202,7 +239,7 @@ class TrackNode(LifecycleNode):
         # Compute transform to desired frame
         transform = self.get_transform(cam_info_msg.header.frame_id)
         if transform is None:
-            self.get_logger().info("No transform")
+            self.get_logger().warn(f"[track_node] Could get transform from {cam_info_msg.header.frame_id}")
             return tracker_msg
         
         # Convert imgs
@@ -230,10 +267,24 @@ class TrackNode(LifecycleNode):
         x = (int(cx) - px) * z / fx
         y = (int(cy) - py) * z / fy
 
-        # TODO: Apply Kalman Filter here (if needed)
-        # TODO: Optionally apply frame transformation here
+        # TODO: Apply Kalman Filter
+        if self.initialize_ekf:
+            self.initial_state = [x, y, z, 0, 0, 0]
+            self.ekf = EKF(process_noise_cov=self.process_noise_cov,
+                    initial_state=self.initial_state,
+                    initial_covariance=self.initial_covariance,
+                    dt=self.dt)
+            self.get_logger().info('[track_node] EKF Initialized!')
+            self.initialize_ekf = False
+        else:
+            self.ekf.predict()
+            self.ekf.update([x, y, z], dynamic_R=self.measurement_noise_cov)
+            [x, y, z] = self.ekf.get_state()
 
-        self.get_logger().info(f"[track_node] 3D position: x={x:.2f}, y={y:.2f}, z={z:.2f}")
+
+        # TODO: Apply frame transformation here
+
+        # self.get_logger().info(f"[track_node] 3D position: x={x:.2f}, y={y:.2f}, z={z:.2f}")
 
         # Populate output message
         tracker_msg.position.x = x

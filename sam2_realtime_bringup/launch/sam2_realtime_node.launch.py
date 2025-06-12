@@ -21,8 +21,8 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "image_topic",
-            default_value="/camera/camera/color/image_raw",
-            # default_value="/k4a/rgb/image_raw",
+            # default_value="/camera/camera/color/image_raw",
+            default_value="/k4a/rgb/image_raw",
             description="Image topic for RGB input"
         ),
         DeclareLaunchArgument(

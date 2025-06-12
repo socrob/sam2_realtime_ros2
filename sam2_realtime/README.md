@@ -1,3 +1,4 @@
+- Camera rate, i.e. camera must have no lag. Test different resolutions;
 - Test different ways of computing the center of the mask;
 - Confirm the center is computed correctly (Yolo vs tiago obj local);
 - Optimize Kalman Filter;
@@ -13,3 +14,8 @@ depth_scale = 1
 
 Microsoft Azure
 depth_scale = 1
+
+
+# TODO
+- Test LifeCycle properties;
+- Update and test Docker;
