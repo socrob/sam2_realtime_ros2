@@ -36,12 +36,7 @@ class TrackNode(LifecycleNode):
     def __init__(self) -> None:
         super().__init__("track_node")
 
-        # Parameters
-        # self.declare_parameter('depth_topic', '/camera/camera/depth/image_rect_raw')
-        # self.declare_parameter('cam_info', '/camera/camera/color/camera_info')
-        # self.declare_parameter("target_frame", "camera_color_optical_frame")
-        # self.declare_parameter("depth_image_units_divisor", 1000)
-        
+        # Parameters        
         self.declare_parameter('depth_topic', '/k4a/depth_to_rgb/image_raw')
         self.declare_parameter('cam_info', '/k4a/rgb/camera_info')
         self.declare_parameter("target_frame", "camera_base")

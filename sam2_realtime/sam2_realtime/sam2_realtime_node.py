@@ -24,17 +24,14 @@ class SAM2Node(LifecycleNode):
         super().__init__('sam2_node')
 
         # Declare parameters
-        # self.declare_parameter('image_topic', '/camera/camera/color/image_raw')
         self.declare_parameter('image_topic', '/k4a/rgb/image_raw')
-        self.declare_parameter('image_reliability', QoSReliabilityPolicy.BEST_EFFORT)
         self.declare_parameter('model_cfg', 'configs/sam2.1/sam2.1_hiera_s.yaml')
         self.declare_parameter('checkpoint', 'checkpoints/sam2.1_hiera_small.pt')
+        self.declare_parameter('image_reliability', QoSReliabilityPolicy.BEST_EFFORT)
+        self.declare_parameter('live_visualization', False)
 
         # Runtime flags
-        self.initialized = False
         self.predictor = None
-        self.bbox = None
-        self.mask_prompt = None
 
     def on_configure(self, state: LifecycleState) -> TransitionCallbackReturn:
         try:
@@ -45,6 +42,7 @@ class SAM2Node(LifecycleNode):
             self.model_cfg = self.get_parameter('model_cfg').get_parameter_value().string_value
             self.checkpoint = self.get_parameter('checkpoint').get_parameter_value().string_value
             self.reliability = self.get_parameter('image_reliability').get_parameter_value().integer_value
+            self.live_visualization = self.get_parameter('live_visualization').get_parameter_value().bool_value
 
             self.get_logger().info(f'[sam2_node] Using config: {self.model_cfg}')
             self.get_logger().info(f'[sam2_node] Using checkpoint: {self.checkpoint}')
@@ -85,6 +83,10 @@ class SAM2Node(LifecycleNode):
         try:
             self.get_logger().info('[sam2_node] Activating...')
 
+            self.initialized = False
+            self.bbox = None
+            self.mask_prompt = None
+
             self.image_sub = self.create_subscription(Image, self.image_topic, self.image_cb, self.qos)
             self.prompt_sub = self.create_subscription(PromptBbox, '/sam2/init_prompt', self.prompt_cb, 10)
             self.prompt_mask_sub = self.create_subscription(Image, '/sam2/init_prompt_mask', self.prompt_mask_cb, 10)
@@ -104,6 +106,9 @@ class SAM2Node(LifecycleNode):
             self.destroy_subscription(self.image_sub)
             self.destroy_subscription(self.prompt_sub)
             self.destroy_subscription(self.prompt_mask_sub)
+            self.initialized = False
+            self.bbox = None
+            self.mask_prompt = None
             super().on_deactivate(state)
             self.get_logger().info('[sam2_node] Deactivated')
             return TransitionCallbackReturn.SUCCESS
@@ -117,6 +122,8 @@ class SAM2Node(LifecycleNode):
             self.get_logger().info('[sam2_node] Cleaning up...')
             self.predictor = None
             self.initialized = False
+            self.bbox = None
+            self.mask_prompt = None
             # Destroy Publisher
             del self.qos
             super().on_cleanup(state)
@@ -199,9 +206,10 @@ class SAM2Node(LifecycleNode):
             all_mask = cv2.cvtColor(all_mask, cv2.COLOR_GRAY2RGB)
             frame = cv2.addWeighted(frame, 1, all_mask, 0.5, 0)
 
-        # Display result (debug only)
-        cv2.imshow("SAM2 Tracking", frame)
-        cv2.waitKey(1)
+        # Display result
+        if self.live_visualization:
+            cv2.imshow("SAM2 Tracking", frame)
+            cv2.waitKey(1)
 
 
 def main():

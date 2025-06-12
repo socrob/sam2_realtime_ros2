@@ -12,6 +12,7 @@ def generate_launch_description():
     image_reliability = LaunchConfiguration("image_reliability")
     model_cfg = LaunchConfiguration("model_cfg")
     checkpoint = LaunchConfiguration("checkpoint")
+    live_visualization = LaunchConfiguration("live_visualization")
 
     return LaunchDescription([
         DeclareLaunchArgument(
@@ -21,7 +22,6 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "image_topic",
-            # default_value="/camera/camera/color/image_raw",
             default_value="/k4a/rgb/image_raw",
             description="Image topic for RGB input"
         ),
@@ -40,6 +40,11 @@ def generate_launch_description():
             default_value="checkpoints/sam2.1_hiera_small.pt",
             description="Path to SAM2 checkpoint"
         ),
+        DeclareLaunchArgument(
+            "live_visualization",
+            default_value="False",
+            description="SAM2 mask visualization"
+        ),
         LifecycleNode(
             package="sam2_realtime",
             executable="sam2_realtime_node",
@@ -50,6 +55,7 @@ def generate_launch_description():
                 "image_reliability": image_reliability,
                 "model_cfg": model_cfg,
                 "checkpoint": checkpoint,
+                "live_visualization": live_visualization,
             }],
             output="screen"
         )
