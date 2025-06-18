@@ -50,6 +50,7 @@ class TrackNode(LifecycleNode):
         self.tf_buffer = Buffer()
         self.cv_bridge = CvBridge()
         self.ekf = None
+        self.maximum_detection_threshold = 0.3
 
     def on_configure(self, state: LifecycleState) -> TransitionCallbackReturn:
         self.get_logger().info(f"[{self.get_name()}] Configuring...")
@@ -250,7 +251,9 @@ class TrackNode(LifecycleNode):
                 return tracker_msg
             
         # Estimate depth of a square centered in cx, cy
-        depth = self.get_median_depth(int(cy), int(cx), depth_image, mask)
+        # depth = self.get_median_depth(int(cy), int(cx), depth_image, mask)
+        depth = self.get_median_depth_2(depth_image, mask)
+        
         if depth <= 0:
             return tracker_msg
 
@@ -258,7 +261,7 @@ class TrackNode(LifecycleNode):
         k = cam_info_msg.k
         fx, fy, px, py = k[0], k[4], k[2], k[5]
 
-        z = depth / self.depth_image_units_divisor
+        z = depth
         x = (int(cx) - px) * z / fx
         y = (int(cy) - py) * z / fy
 
@@ -356,9 +359,46 @@ class TrackNode(LifecycleNode):
 
         if valid_depths.size > 0:
             median = np.median(valid_depths)
-            return 0.0 if np.isnan(median) else float(median)
+            median = float(median/self.depth_image_units_divisor)
+            return 0.0 if np.isnan(median) else median
         return 0.0
+    
 
+    def get_median_depth_2(self, depth_image: np.ndarray, mask: Optional[np.ndarray]) -> float:
+        """
+
+        """
+        if mask is None or mask.shape[:2] != depth_image.shape[:2]:
+            return 0.0
+
+        # Apply the mask directly
+        roi = cv2.bitwise_and(depth_image, depth_image, mask=mask)
+
+        # Convert to meters (camera dependent)
+        roi = roi / self.depth_image_units_divisor
+        if not np.any(roi):
+            return 0.0
+        
+        # Compute the median Z value of the object from the mask
+        roi = roi[roi > 0]
+        bb_center_z_coord = np.median(roi)
+
+        # This computes the absolute difference between each depth value in the ROI and the estimated center Z value of the bounding box 
+        # (matrix of how far each point in ROI is from the center depth, in meters)
+        z_diff = np.abs(roi - bb_center_z_coord)
+        # A binary mask that selects only the pixels in ROI where the depth is within a small threshold of the center depth.
+        mask_z = z_diff <= self.maximum_detection_threshold
+        if not np.any(mask_z):
+            return 0.0
+
+        # Now roi is a 1D array of filtered depth values close to the center Z
+        roi = roi[mask_z]
+        # Compute the range of depth values within that filtered zone
+        z_min, z_max = np.min(roi), np.max(roi)
+        # Compute the average depth within that filtered zone
+        z = float((z_max + z_min) / 2)
+
+        return z if z > 0 else 0.0
 
 
     def get_centroid_of_mask(self, mask: np.ndarray) -> Tuple[Union[int, float], Union[int, float]]:

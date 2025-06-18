@@ -68,6 +68,7 @@ class SAM2Node(LifecycleNode):
 
             # Lifecycle Publisher
             self._pub = self.create_lifecycle_publisher(TrackedObject, "/sam2/mask", 10)
+            self._img_pub = self.create_lifecycle_publisher(Image, "/sam2/img_mask", 10)
 
             super().on_configure(state)
             self.get_logger().info('[sam2_node] SAM2 model loaded')
@@ -207,8 +208,14 @@ class SAM2Node(LifecycleNode):
 
         # Display result
         if self.live_visualization:
-            cv2.imshow("SAM2 Tracking", frame)
-            cv2.waitKey(1)
+            debug_msg = self.cv_bridge.cv2_to_imgmsg(frame, encoding="bgr8")
+            now = Clock().now().to_msg()
+            debug_msg.header.stamp = now
+            debug_msg.header.frame_id = msg.header.frame_id
+            self._img_pub.publish(debug_msg)
+            # Live Visualization
+            # cv2.imshow("SAM2 Tracking", frame)
+            # cv2.waitKey(1)
 
 
 def main():
