@@ -52,6 +52,7 @@ ros2 launch sam2_realtime_bringup track_node.launch.py \
   depth_topic:="$DEPTH_TOPIC" \
   cam_info:="$CAM_INFO" \
   target_frame:="$TARGET_FRAME" \
+  use_kalman_filter:="true" \
   depth_image_units_divisor:="$DEPTH_DIVISOR"
 
 

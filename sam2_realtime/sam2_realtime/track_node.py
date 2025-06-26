@@ -43,6 +43,8 @@ class TrackNode(LifecycleNode):
         self.declare_parameter("depth_image_units_divisor", 1)
         
         self.declare_parameter("depth_filter_percentage", 0.3)
+        self.declare_parameter("maximum_detection_threshold", 0.3)
+        self.declare_parameter("use_kalman_filter", True)
         self.declare_parameter('sam2_mask_topic', '/sam2/mask')
         self.declare_parameter("depth_image_reliability", QoSReliabilityPolicy.BEST_EFFORT)
         self.declare_parameter("depth_info_reliability", QoSReliabilityPolicy.BEST_EFFORT)
@@ -50,7 +52,6 @@ class TrackNode(LifecycleNode):
         self.tf_buffer = Buffer()
         self.cv_bridge = CvBridge()
         self.ekf = None
-        self.maximum_detection_threshold = 0.3
 
     def on_configure(self, state: LifecycleState) -> TransitionCallbackReturn:
         self.get_logger().info(f"[{self.get_name()}] Configuring...")
@@ -66,6 +67,16 @@ class TrackNode(LifecycleNode):
             self.get_parameter("depth_filter_percentage")
             .get_parameter_value()
             .double_value
+        )
+        self.maximum_detection_threshold = (
+            self.get_parameter("maximum_detection_threshold")
+            .get_parameter_value()
+            .double_value
+        )
+        self.use_kalman_filter = (
+            self.get_parameter("use_kalman_filter")
+            .get_parameter_value()
+            .bool_value
         )
         self.depth_image_units_divisor = (
             self.get_parameter("depth_image_units_divisor")
@@ -109,27 +120,25 @@ class TrackNode(LifecycleNode):
         self.initial_state = [0, 0, 0, 0, 0, 0]
         
         # Define process noise covariance (Q)
-        self.process_noise_cov=[[1e-1, 0, 0, 0, 0, 0],
-                                [0, 1e-1, 0, 0, 0, 0],
-                                [0, 0, 1e-1, 0, 0, 0],
-                                [0, 0, 0, 1e-1, 0, 0],
-                                [0, 0, 0, 0, 1e-1, 0],
-                                [0, 0, 0, 0, 0, 1e-1]]
+        # Initial state [x, y, z, vx, vy, vz]
+        self.initial_state = np.zeros(6)  # [0, 0, 0, 0, 0, 0]
         
-        # Define measurement noise covariance (R) for 3D measurements
-        self.measurement_noise_cov = np.eye(3)/10
-        # self.measurement_noise_cov = np.eye(6)/10
+        # Define process noise covariance (Q)
+        self.process_noise_cov = np.diag([1e-2, 1e-2, 1e-2, 1e-3, 1e-3, 1e-3])
 
-        # Initial covariance matrix
-        self.initial_covariance=[[1e-1, 0, 0, 0, 0, 0],
-                                [0, 1e-1, 0, 0, 0, 0],
-                                [0, 0, 1e-1, 0, 0, 0],
-                                [0, 0, 0, 1e-1, 0, 0],
-                                [0, 0, 0, 0, 1e-1, 0],
-                                [0, 0, 0, 0, 0, 1e-1]]
+        # Azure Kinect depth standard deviation: 5mm = 0.005 meters
+        depth_std_dev = 0.005
+        measurement_variance = depth_std_dev ** 2
+
+        # Define measurement noise covariance (R) for 3D measurements
+        self.measurement_noise_cov = np.eye(3) * measurement_variance  # 3D position measurement noise
+
+        # Initial covariance matrix for state estimation
+        self.initial_covariance = np.diag([0.5, 0.5, 0.5, 1.0, 1.0, 1.0])
+        # self.initial_covariance = np.eye(6) * 1e-1  # Initial uncertainty in the state
         
         # Time step
-        self.dt = 1.0
+        self.dt = 0.3
 
         super().on_configure(state)
         self.get_logger().info(f"[{self.get_name()}] Configured")
@@ -266,19 +275,23 @@ class TrackNode(LifecycleNode):
         y = (int(cy) - py) * z / fy
 
         # TODO: Apply Kalman Filter
-        if self.initialize_ekf:
-            self.initial_state = [x, y, z, 0, 0, 0]
-            self.ekf = EKF(process_noise_cov=self.process_noise_cov,
-                    initial_state=self.initial_state,
-                    initial_covariance=self.initial_covariance,
-                    dt=self.dt)
-            self.get_logger().info('[track_node] EKF Initialized!')
-            self.initialize_ekf = False
-        else:
-            self.ekf.predict()
-            self.ekf.update([x, y, z], dynamic_R=self.measurement_noise_cov)
-            [x, y, z] = self.ekf.get_state()
+        if self.use_kalman_filter:
+            if self.initialize_ekf:
+                self.initial_state = [x, y, z, 0, 0, 0]
+                self.ekf = EKF(process_noise_cov=self.process_noise_cov,
+                        initial_state=self.initial_state,
+                        initial_covariance=self.initial_covariance,
+                        dt=self.dt)
+                self.get_logger().info('[track_node] EKF Initialized!')
+                self.initialize_ekf = False
+            else:
+                self.ekf.predict()
+                self.ekf.update([x, y, z], dynamic_R=self.measurement_noise_cov)
+                [x, y, z] = self.ekf.get_state()
 
+        
+        # Ignore height
+        y = 0.0
 
         # TODO: Apply frame transformation here
 

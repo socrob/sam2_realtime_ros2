@@ -12,6 +12,8 @@ def generate_launch_description():
         DeclareLaunchArgument('depth_image_units_divisor', default_value='1'),
         DeclareLaunchArgument('sam2_mask_topic', default_value='/sam2/mask'),
         DeclareLaunchArgument('depth_filter_percentage', default_value='0.3'),
+        DeclareLaunchArgument('maximum_detection_threshold', default_value='0.3'),
+        DeclareLaunchArgument('use_kalman_filter', default_value='true'),
 
         Node(
             package='sam2_realtime',
@@ -25,6 +27,7 @@ def generate_launch_description():
                 'target_frame': LaunchConfiguration('target_frame'),
                 'depth_filter_percentage': LaunchConfiguration('depth_filter_percentage'),
                 'depth_image_units_divisor': LaunchConfiguration('depth_image_units_divisor'),
+                'use_kalman_filter': LaunchConfiguration('use_kalman_filter'),
             }],
         )
     ])
