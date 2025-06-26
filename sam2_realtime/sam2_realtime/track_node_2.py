@@ -44,7 +44,6 @@ class TrackNode(LifecycleNode):
         
         self.declare_parameter("depth_filter_percentage", 0.3)
         self.declare_parameter("maximum_detection_threshold", 0.3)
-        self.declare_parameter("use_kalman_filter", True)
         self.declare_parameter('sam2_mask_topic', '/sam2/mask')
         self.declare_parameter("depth_image_reliability", QoSReliabilityPolicy.BEST_EFFORT)
         self.declare_parameter("depth_info_reliability", QoSReliabilityPolicy.BEST_EFFORT)
@@ -53,6 +52,11 @@ class TrackNode(LifecycleNode):
         self.cv_bridge = CvBridge()
         self.ekf = None
 
+        #TODO
+        self.camera_frame = "camera_base"
+        # Frequency of measurement
+        self.rate = 10
+
     def on_configure(self, state: LifecycleState) -> TransitionCallbackReturn:
         self.get_logger().info(f"[{self.get_name()}] Configuring...")
         
@@ -60,34 +64,12 @@ class TrackNode(LifecycleNode):
         self.cam_info = self.get_parameter('cam_info').get_parameter_value().string_value
         self.sam2_mask_topic = self.get_parameter('sam2_mask_topic').get_parameter_value().string_value
 
-        self.target_frame = (
-            self.get_parameter("target_frame").get_parameter_value().string_value
-        )
-        self.depth_filter_percentage = (
-            self.get_parameter("depth_filter_percentage")
-            .get_parameter_value()
-            .double_value
-        )
-        self.maximum_detection_threshold = (
-            self.get_parameter("maximum_detection_threshold")
-            .get_parameter_value()
-            .double_value
-        )
-        self.use_kalman_filter = (
-            self.get_parameter("use_kalman_filter")
-            .get_parameter_value()
-            .bool_value
-        )
-        self.depth_image_units_divisor = (
-            self.get_parameter("depth_image_units_divisor")
-            .get_parameter_value()
-            .integer_value
-        )
-        dimg_reliability = (
-            self.get_parameter("depth_image_reliability")
-            .get_parameter_value()
-            .integer_value
-        )
+        self.target_frame = (self.get_parameter("target_frame").get_parameter_value().string_value)
+        self.depth_filter_percentage = (self.get_parameter("depth_filter_percentage").get_parameter_value().double_value)
+        self.maximum_detection_threshold = (self.get_parameter("maximum_detection_threshold").get_parameter_value().double_value)
+        self.depth_image_units_divisor = (self.get_parameter("depth_image_units_divisor").get_parameter_value().integer_value)
+        dimg_reliability = (self.get_parameter("depth_image_reliability").get_parameter_value().integer_value)
+        dinfo_reliability = (self.get_parameter("depth_info_reliability").get_parameter_value().integer_value)
 
         self.depth_image_qos_profile = QoSProfile(
             reliability=dimg_reliability,
@@ -96,11 +78,6 @@ class TrackNode(LifecycleNode):
             depth=1,
         )
 
-        dinfo_reliability = (
-            self.get_parameter("depth_info_reliability")
-            .get_parameter_value()
-            .integer_value
-        )
 
         self.depth_info_qos_profile = QoSProfile(
             reliability=dinfo_reliability,
@@ -113,11 +90,17 @@ class TrackNode(LifecycleNode):
         self.tf_listener = TransformListener(self.tf_buffer, self)
         self.tf_broadcaster = TransformBroadcaster(self)
 
+        # Position Coordinates
+        # x, y, z
+        self.position = (0.0, 0.0, 0.0)
+        # cx, cy
+        self.centroid = (0.0, 0.0)
+
         # Tracker Publisher
         self._pub = self.create_publisher(TrackedObject, "tracked_object", 10)
 
         #### EKF Params
-        self.initial_state = [0, 0, 0, 0, 0, 0]
+        self.initial_state = [0, 0, 1.5, 0, 0, 0]
         
         # Define process noise covariance (Q)
         # Initial state [x, y, z, vx, vy, vz]
@@ -136,10 +119,13 @@ class TrackNode(LifecycleNode):
         # Initial covariance matrix for state estimation
         self.initial_covariance = np.diag([0.5, 0.5, 0.5, 1.0, 1.0, 1.0])
         # self.initial_covariance = np.eye(6) * 1e-1  # Initial uncertainty in the state
-        
-        # Time step
-        self.dt = 0.3
 
+        # Initialize EKF
+        self.ekf = EKF(process_noise_cov=self.process_noise_cov,
+                        initial_state=self.initial_state,
+                        initial_covariance=self.initial_covariance,
+                        dt=self.rate)
+        
         super().on_configure(state)
         self.get_logger().info(f"[{self.get_name()}] Configured")
 
@@ -162,10 +148,9 @@ class TrackNode(LifecycleNode):
         self._synchronizer = message_filters.ApproximateTimeSynchronizer(
             (self.depth_sub, self.cam_info_sub, self.detections_sub), 10, 0.5
         )
-        self._synchronizer.registerCallback(self.on_detections)
+        self._synchronizer.registerCallback(self.process_detections)
 
-        ### EKF Params
-        self.initialize_ekf = True
+        self.timer = self.create_timer(1.0 / self.rate, self.run)
 
         super().on_activate(state)
         self.get_logger().info(f"[{self.get_name()}] Activated")
@@ -180,7 +165,10 @@ class TrackNode(LifecycleNode):
         self.destroy_subscription(self.detections_sub.sub)
 
         del self._synchronizer
-        self.ekf = None
+        
+        if hasattr(self, 'timer'):
+            self.timer.cancel()
+            del self.timer
 
         super().on_deactivate(state)
         self.get_logger().info(f"[{self.get_name()}] Deactivated")
@@ -192,6 +180,7 @@ class TrackNode(LifecycleNode):
 
         del self.tf_listener
         del self.tf_broadcaster
+        del self.ekf
 
         self.destroy_publisher(self._pub)
 
@@ -203,29 +192,60 @@ class TrackNode(LifecycleNode):
         super().on_cleanup(state)
         self.get_logger().info(f"[{self.get_name()}] Shutted down")
         return TransitionCallbackReturn.SUCCESS
+    
 
-    def on_detections(
-        self,
-        depth_msg: Image,
-        cam_info_msg: CameraInfo,
-        detections_msg: TrackedObject,
-    ) -> None:
+    def run(self) -> None:
+        """
+        Periodically predicts EKF state and publishes the tracked object message and TF.
+        """
 
+        # Transform point
+        transform = self.get_transform(self.camera_frame)
+        if transform is None:
+            self.get_logger().warn(f"[track_node] Could get transform from {self.camera_frame}")
+            return
+        
+        # Get EKF state, i.e. current position
+        self.position = tuple(self.ekf.get_state()[:3])
+        
+        # Apply transform to point
+        self.position = TrackNode.transform_point(self.position, transform[0], transform[1])
+        
+        # Publish msg and TF
+        self.publishMessage()
+
+        # Predict
+        self.ekf.predict()
+    
+
+    def publishMessage(self) -> None:
         tracker_msg = TrackedObject()
         now = Clock().now().to_msg()
         tracker_msg.header.stamp = now
         tracker_msg.header.frame_id = self.target_frame
+        tracker_msg.id = 1
         
-        tracker_msg.id = detections_msg.id
-        tracker_msg.mask = detections_msg.mask
         tracker_msg.mask.header.stamp = now
         tracker_msg.mask.header.frame_id = self.target_frame
 
-        tracker_msg = self.process_detections(depth_msg, cam_info_msg, tracker_msg)
+        tracker_msg.position.x = self.position[0]
+        # tracker_msg.position.y = self.position[1]
+        # Ignoring centroid height which irrelevant for tracking
+        tracker_msg.position.y = 0.0
+        tracker_msg.position.z = self.position[2]
+
+        tracker_msg.centroid_x = self.centroid[0]
+        tracker_msg.centroid_y = self.centroid[1]
+
+        self.get_logger().info(f"[track_node] 3D position: x={tracker_msg.position.x:.2f}, y={tracker_msg.position.y:.2f}, z={tracker_msg.position.z:.2f}")
+
+        # Publish TF
+        self.publish_tf_from_tracked_object(tracker_msg=tracker_msg)
+
         self._pub.publish(tracker_msg)
 
    
-    def process_detections(self, depth_msg: Image, cam_info_msg: CameraInfo, tracker_msg: TrackedObject) -> TrackedObject:
+    def process_detections(self, depth_msg: Image, cam_info_msg: CameraInfo, tracker_msg: TrackedObject) -> None:
         """
         Processes SAM2 mask and depth data to estimate 3D position of the tracked object.
 
@@ -239,13 +259,7 @@ class TrackNode(LifecycleNode):
         """
         # If mask is not available, there is no point in tracking
         if not tracker_msg.mask:
-            return tracker_msg
-
-        # Compute transform to desired frame
-        transform = self.get_transform(cam_info_msg.header.frame_id)
-        if transform is None:
-            self.get_logger().warn(f"[track_node] Could get transform from {cam_info_msg.header.frame_id}")
-            return tracker_msg
+            return
         
         # Convert imgs
         depth_image = self.cv_bridge.imgmsg_to_cv2(depth_msg, desired_encoding="passthrough")
@@ -257,14 +271,14 @@ class TrackNode(LifecycleNode):
             cx, cy = self.get_furthest_point_from_mask_edge(mask)
             if cx == -1 or cy == -1:
                 self.get_logger().warn('[track_node] Could not compute a valid point in the mask')
-                return tracker_msg
+                return
             
         # Estimate depth of a square centered in cx, cy
         # depth = self.get_median_depth(int(cy), int(cx), depth_image, mask)
         depth = self.get_median_depth_2(depth_image, mask)
         
         if depth <= 0:
-            return tracker_msg
+            return
 
         # Convert depth image coordinates to 3D camera space
         k = cam_info_msg.k
@@ -274,42 +288,12 @@ class TrackNode(LifecycleNode):
         x = (int(cx) - px) * z / fx
         y = (int(cy) - py) * z / fy
 
-        # TODO: Apply Kalman Filter
-        if self.use_kalman_filter:
-            if self.initialize_ekf:
-                self.initial_state = [x, y, z, 0, 0, 0]
-                self.ekf = EKF(process_noise_cov=self.process_noise_cov,
-                        initial_state=self.initial_state,
-                        initial_covariance=self.initial_covariance,
-                        dt=self.dt)
-                self.get_logger().info('[track_node] EKF Initialized!')
-                self.initialize_ekf = False
-            else:
-                self.ekf.predict()
-                self.ekf.update([x, y, z], dynamic_R=self.measurement_noise_cov)
-                [x, y, z] = self.ekf.get_state()
+        # Update EKF after measurement
+        self.ekf.update([x, y, z], dynamic_R=self.measurement_noise_cov)
 
-        
-        # Ignore height
-        y = 0.0
+        self.centroid = (float(cx), float(cy))
 
-        # TODO: Apply frame transformation here
-        x, y, z = TrackNode.transform_point((x, y, z), transform[0], transform[1])
-
-        # self.get_logger().info(f"[track_node] 3D position: x={x:.2f}, y={y:.2f}, z={z:.2f}")
-
-        # Populate output message
-        tracker_msg.position.x = x
-        tracker_msg.position.y = y
-        tracker_msg.position.z = z
-
-        tracker_msg.centroid_x = float(cx)
-        tracker_msg.centroid_y = float(cy)
-
-        # Publish TF
-        self.publish_tf_from_tracked_object(tracker_msg=tracker_msg)
-        
-        return tracker_msg
+        return
     
 
     def publish_tf_from_tracked_object(self, tracker_msg: TrackedObject):

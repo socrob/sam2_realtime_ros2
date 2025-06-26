@@ -26,6 +26,7 @@ setup(
             "yolo_prompt_node = sam2_realtime.yolo_prompt_node:main",
             "yolo_mask_prompt_node = sam2_realtime.yolo_mask_prompt_node:main",
             "track_node = sam2_realtime.track_node:main",
+            "track_node_2 = sam2_realtime.track_node_2:main",
             "debug_node = sam2_realtime.debug_node:main",
         ],
     },
