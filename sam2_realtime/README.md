@@ -22,3 +22,7 @@ depth_scale = 1
 - Fix z coordinate (is it irrelevant?)
 - Apply transform to relevant frame;
 - Add event_in to tracker;
+
+
+frame_id: rgb_camera_link
+Find a way to filter the mask when the confidence is not high (remove outliers)

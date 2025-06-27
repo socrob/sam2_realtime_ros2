@@ -9,10 +9,13 @@ def generate_launch_description():
         DeclareLaunchArgument('depth_topic', default_value='/k4a/depth_to_rgb/image_raw'),
         DeclareLaunchArgument('cam_info', default_value='/k4a/rgb/camera_info'),
         DeclareLaunchArgument('target_frame', default_value='camera_base'),
+        DeclareLaunchArgument('camera_frame', default_value='camera_base'),
         DeclareLaunchArgument('depth_image_units_divisor', default_value='1'),
         DeclareLaunchArgument('sam2_mask_topic', default_value='/sam2/mask'),
         DeclareLaunchArgument('depth_filter_percentage', default_value='0.3'),
         DeclareLaunchArgument('maximum_detection_threshold', default_value='0.3'),
+        DeclareLaunchArgument('predict_rate', default_value='10'),
+        DeclareLaunchArgument('print_measurement_marker', default_value='true'),
 
         Node(
             package='sam2_realtime',
@@ -26,6 +29,9 @@ def generate_launch_description():
                 'target_frame': LaunchConfiguration('target_frame'),
                 'depth_filter_percentage': LaunchConfiguration('depth_filter_percentage'),
                 'depth_image_units_divisor': LaunchConfiguration('depth_image_units_divisor'),
+                'camera_frame': LaunchConfiguration('camera_frame'),
+                'predict_rate': LaunchConfiguration('predict_rate'),
+                'print_measurement_marker': LaunchConfiguration('print_measurement_marker'),
             }],
         )
     ])

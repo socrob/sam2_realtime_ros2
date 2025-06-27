@@ -34,11 +34,13 @@ fi
 if [ "$CAMERA_TYPE" == "azure" ]; then
     DEPTH_TOPIC="/k4a/depth_to_rgb/image_raw"
     CAM_INFO="/k4a/rgb/camera_info"
+    CAM_FRAME="camera_base"
     TARGET_FRAME="camera_base"
     DEPTH_DIVISOR="1"
 elif [ "$CAMERA_TYPE" == "realsense" ]; then
     DEPTH_TOPIC="/camera/camera/depth/image_rect_raw"
     CAM_INFO="/camera/camera/color/camera_info"
+    CAM_FRAME="camera_color_optical_frame"
     TARGET_FRAME="camera_color_optical_frame"
     DEPTH_DIVISOR="1000"
 else
@@ -51,8 +53,11 @@ echo "🚀 Launching Track Node for $CAMERA_TYPE..."
 ros2 launch sam2_realtime_bringup track_node_2.launch.py \
   depth_topic:="$DEPTH_TOPIC" \
   cam_info:="$CAM_INFO" \
+  cam_frame:="$CAM_FRAME" \
   target_frame:="$TARGET_FRAME" \
-  depth_image_units_divisor:="$DEPTH_DIVISOR"
+  depth_image_units_divisor:="$DEPTH_DIVISOR" \
+  print_measurement_marker:="true" \
+  predict_rate:="10" 
 
 
 

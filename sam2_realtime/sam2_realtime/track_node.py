@@ -51,7 +51,6 @@ class TrackNode(LifecycleNode):
 
         self.tf_buffer = Buffer()
         self.cv_bridge = CvBridge()
-        self.ekf = None
 
     def on_configure(self, state: LifecycleState) -> TransitionCallbackReturn:
         self.get_logger().info(f"[{self.get_name()}] Configuring...")
@@ -116,30 +115,6 @@ class TrackNode(LifecycleNode):
         # Tracker Publisher
         self._pub = self.create_publisher(TrackedObject, "tracked_object", 10)
 
-        #### EKF Params
-        self.initial_state = [0, 0, 0, 0, 0, 0]
-        
-        # Define process noise covariance (Q)
-        # Initial state [x, y, z, vx, vy, vz]
-        self.initial_state = np.zeros(6)  # [0, 0, 0, 0, 0, 0]
-        
-        # Define process noise covariance (Q)
-        self.process_noise_cov = np.diag([1e-2, 1e-2, 1e-2, 1e-3, 1e-3, 1e-3])
-
-        # Azure Kinect depth standard deviation: 5mm = 0.005 meters
-        depth_std_dev = 0.005
-        measurement_variance = depth_std_dev ** 2
-
-        # Define measurement noise covariance (R) for 3D measurements
-        self.measurement_noise_cov = np.eye(3) * measurement_variance  # 3D position measurement noise
-
-        # Initial covariance matrix for state estimation
-        self.initial_covariance = np.diag([0.5, 0.5, 0.5, 1.0, 1.0, 1.0])
-        # self.initial_covariance = np.eye(6) * 1e-1  # Initial uncertainty in the state
-        
-        # Time step
-        self.dt = 0.3
-
         super().on_configure(state)
         self.get_logger().info(f"[{self.get_name()}] Configured")
 
@@ -164,9 +139,6 @@ class TrackNode(LifecycleNode):
         )
         self._synchronizer.registerCallback(self.on_detections)
 
-        ### EKF Params
-        self.initialize_ekf = True
-
         super().on_activate(state)
         self.get_logger().info(f"[{self.get_name()}] Activated")
 
@@ -180,7 +152,6 @@ class TrackNode(LifecycleNode):
         self.destroy_subscription(self.detections_sub.sub)
 
         del self._synchronizer
-        self.ekf = None
 
         super().on_deactivate(state)
         self.get_logger().info(f"[{self.get_name()}] Deactivated")
@@ -273,28 +244,12 @@ class TrackNode(LifecycleNode):
         z = depth
         x = (int(cx) - px) * z / fx
         y = (int(cy) - py) * z / fy
-
-        # TODO: Apply Kalman Filter
-        if self.use_kalman_filter:
-            if self.initialize_ekf:
-                self.initial_state = [x, y, z, 0, 0, 0]
-                self.ekf = EKF(process_noise_cov=self.process_noise_cov,
-                        initial_state=self.initial_state,
-                        initial_covariance=self.initial_covariance,
-                        dt=self.dt)
-                self.get_logger().info('[track_node] EKF Initialized!')
-                self.initialize_ekf = False
-            else:
-                self.ekf.predict()
-                self.ekf.update([x, y, z], dynamic_R=self.measurement_noise_cov)
-                [x, y, z] = self.ekf.get_state()
-
         
         # Ignore height
         y = 0.0
 
-        # TODO: Apply frame transformation here
-        x, y, z = TrackNode.transform_point((x, y, z), transform[0], transform[1])
+        # Apply frame transformation here
+        # x, y, z = TrackNode.transform_point((x, y, z), transform[0], transform[1])
 
         # self.get_logger().info(f"[track_node] 3D position: x={x:.2f}, y={y:.2f}, z={z:.2f}")
 
