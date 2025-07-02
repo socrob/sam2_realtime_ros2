@@ -25,4 +25,3 @@ depth_scale = 1
 
 
 frame_id: rgb_camera_link
-Find a way to filter the mask when the confidence is not high (remove outliers)

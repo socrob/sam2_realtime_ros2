@@ -40,14 +40,15 @@ class TrackNode(LifecycleNode):
         # Parameters        
         self.declare_parameter('depth_topic', '/k4a/depth_to_rgb/image_raw')
         self.declare_parameter('cam_info', '/k4a/rgb/camera_info')
-        self.declare_parameter("target_frame", "camera_base")
+        self.declare_parameter("target_frame", "rgb_camera_link")
         self.declare_parameter("depth_image_units_divisor", 1)
         self.declare_parameter("depth_filter_percentage", 0.3)
         self.declare_parameter("maximum_detection_threshold", 0.3)
+        self.declare_parameter("min_mask_area", 1000)
         self.declare_parameter('sam2_mask_topic', '/sam2/mask')
         self.declare_parameter("depth_image_reliability", QoSReliabilityPolicy.BEST_EFFORT)
         self.declare_parameter("depth_info_reliability", QoSReliabilityPolicy.BEST_EFFORT)
-        self.declare_parameter("camera_frame", "camera_base")
+        self.declare_parameter("camera_frame", "rgb_camera_link")
         self.declare_parameter("predict_rate", 10)
         self.declare_parameter("print_measurement_marker", True)
 
@@ -66,6 +67,7 @@ class TrackNode(LifecycleNode):
         self.camera_frame = (self.get_parameter("camera_frame").get_parameter_value().string_value)
         self.depth_filter_percentage = (self.get_parameter("depth_filter_percentage").get_parameter_value().double_value)
         self.maximum_detection_threshold = (self.get_parameter("maximum_detection_threshold").get_parameter_value().double_value)
+        self.min_mask_area = (self.get_parameter("min_mask_area").get_parameter_value().integer_value)
         self.rate = (self.get_parameter("predict_rate").get_parameter_value().integer_value)
         self.depth_image_units_divisor = (self.get_parameter("depth_image_units_divisor").get_parameter_value().integer_value)
         dimg_reliability = (self.get_parameter("depth_image_reliability").get_parameter_value().integer_value)
@@ -272,6 +274,12 @@ class TrackNode(LifecycleNode):
         # Convert imgs
         depth_image = self.cv_bridge.imgmsg_to_cv2(depth_msg, desired_encoding="passthrough")
         mask = self.cv_bridge.imgmsg_to_cv2(tracker_msg.mask, desired_encoding="mono8")
+
+        # Check mask size
+        num_pixels = cv2.countNonZero(mask)
+        if num_pixels < self.min_mask_area:
+            self.get_logger().warn(f"[track_node] Mask too small ({num_pixels} pixels) — ignoring this measurement.")
+            return
 
         # Try using centroid of the mask first
         cx, cy = self.get_centroid_of_mask(mask)
