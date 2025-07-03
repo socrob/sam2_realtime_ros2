@@ -19,9 +19,5 @@ depth_scale = 1
 # TODO
 - Test LifeCycle properties;
 - Update and test Docker;
-- Fix z coordinate (is it irrelevant?)
-- Apply transform to relevant frame;
+- Apply transform to relevant frame (frame_id: rgb_camera_link). Fix y=0;
 - Add event_in to tracker;
-
-
-frame_id: rgb_camera_link

@@ -193,12 +193,14 @@ class SAM2Node(LifecycleNode):
             sam2_msg = TrackedObject()
             now = Clock().now().to_msg()
 
-            sam2_msg.header.stamp = now
+            # sam2_msg.header.stamp = now
+            sam2_msg.header.stamp = msg.header.stamp
             sam2_msg.header.frame_id = msg.header.frame_id
             sam2_msg.id = 1
 
             sam2_msg.mask = self.cv_bridge.cv2_to_imgmsg(all_mask, encoding='mono8')
-            sam2_msg.mask.header.stamp = now
+            # sam2_msg.mask.header.stamp = now
+            sam2_msg.header.stamp = msg.header.stamp
             sam2_msg.mask.header.frame_id = msg.header.frame_id
 
             self._pub.publish(sam2_msg)

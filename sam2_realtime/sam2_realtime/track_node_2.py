@@ -155,8 +155,11 @@ class TrackNode(LifecycleNode):
         )
 
         self._synchronizer = message_filters.ApproximateTimeSynchronizer(
-            (self.depth_sub, self.cam_info_sub, self.detections_sub), 10, 0.5
+            (self.depth_sub, self.cam_info_sub, self.detections_sub), 10, 0.05
         )
+        # self._synchronizer = message_filters.TimeSynchronizer(
+        #     (self.depth_sub, self.cam_info_sub, self.detections_sub), 10
+        # )
         self._synchronizer.registerCallback(self.process_detections)
 
         self.timer = self.create_timer(1.0 / self.rate, self.run)
@@ -319,7 +322,7 @@ class TrackNode(LifecycleNode):
         # --- Debug marker for measurement ---
         marker = Marker()
         marker.header.stamp = self.get_clock().now().to_msg()
-        marker.header.frame_id = self.target_frame
+        marker.header.frame_id = self.camera_frame
 
         marker.ns = "measurement"
         marker.id = self.marker_id
