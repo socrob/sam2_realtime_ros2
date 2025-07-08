@@ -230,10 +230,10 @@ class TrackNode(LifecycleNode):
         self.position = tuple(self.ekf.get_state()[:3])
 
         # Ignoring height before transformation. In the camera frame (Azure) matches y=0
-        self.updated_position = (self.position[0], 0.0, self.position[2])
+        self.position_no_height = (self.position[0], 0.0, self.position[2])
         
         # Apply transform to point
-        self.transformed_position = self.transform_point_ros2(self.updated_position, transform)
+        self.transformed_position = self.transform_point_ros2(self.position_no_height, transform)
         
         # Publish msg and TF
         self.publishMessage()
