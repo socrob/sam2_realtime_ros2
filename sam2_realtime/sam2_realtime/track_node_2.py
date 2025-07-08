@@ -15,9 +15,11 @@ from rclpy.lifecycle import LifecycleState
 import message_filters
 from cv_bridge import CvBridge
 from tf2_ros.buffer import Buffer
-from tf2_ros import TransformException
 from tf2_ros.transform_listener import TransformListener
 from tf2_ros import TransformBroadcaster
+
+from geometry_msgs.msg import PointStamped
+from tf2_geometry_msgs.tf2_geometry_msgs import do_transform_point
 
 
 from sensor_msgs.msg import CameraInfo, Image
@@ -96,6 +98,7 @@ class TrackNode(LifecycleNode):
         # Position Coordinates
         # x, y, z
         self.position = (0.0, 0.0, 0.0)
+        self.transformed_position = (0.0, 0.0, 0.0)
         # cx, cy
         self.centroid = (0.0, 0.0)
 
@@ -134,6 +137,11 @@ class TrackNode(LifecycleNode):
         
         # Debug marker counter
         self.marker_id = 0
+
+        # Time gated outlier rejection params
+        self.last_update_time = self.get_clock().now()
+        self.max_depth_jump = 0.3 #meters
+        self.relock_window = 1 #seconds
         
         super().on_configure(state)
         self.get_logger().info(f"[{self.get_name()}] Configured")
@@ -213,16 +221,19 @@ class TrackNode(LifecycleNode):
         """
 
         # Transform point
-        transform = self.get_transform(self.camera_frame)
+        transform = self.tf_buffer.lookup_transform(self.target_frame, self.camera_frame, rclpy.time.Time())
         if transform is None:
             self.get_logger().warn(f"[track_node] Could get transform from {self.camera_frame}")
             return
         
         # Get EKF state, i.e. current position
         self.position = tuple(self.ekf.get_state()[:3])
+
+        # Ignoring height before transformation. In the camera frame (Azure) matches y=0
+        self.updated_position = (self.position[0], 0.0, self.position[2])
         
         # Apply transform to point
-        self.position = TrackNode.transform_point(self.position, transform[0], transform[1])
+        self.transformed_position = self.transform_point_ros2(self.updated_position, transform)
         
         # Publish msg and TF
         self.publishMessage()
@@ -241,11 +252,9 @@ class TrackNode(LifecycleNode):
         tracker_msg.mask.header.stamp = now
         tracker_msg.mask.header.frame_id = self.target_frame
 
-        tracker_msg.position.x = self.position[0]
-        # tracker_msg.position.y = self.position[1]
-        # Ignoring centroid height which irrelevant for tracking
-        tracker_msg.position.y = 0.0
-        tracker_msg.position.z = self.position[2]
+        tracker_msg.position.x = self.transformed_position[0]
+        tracker_msg.position.y = self.transformed_position[1]
+        tracker_msg.position.z = self.transformed_position[2]
 
         tracker_msg.centroid_x = float(self.centroid[0])
         tracker_msg.centroid_y = float(self.centroid[1])
@@ -278,7 +287,7 @@ class TrackNode(LifecycleNode):
         depth_image = self.cv_bridge.imgmsg_to_cv2(depth_msg, desired_encoding="passthrough")
         mask = self.cv_bridge.imgmsg_to_cv2(tracker_msg.mask, desired_encoding="mono8")
 
-        # Check mask size
+        # Check mask size (ignore if mask is too small)
         num_pixels = cv2.countNonZero(mask)
         if num_pixels < self.min_mask_area:
             self.get_logger().warn(f"[track_node] Mask too small ({num_pixels} pixels) — ignoring this measurement.")
@@ -298,6 +307,20 @@ class TrackNode(LifecycleNode):
         
         if depth <= 0:
             return
+        
+        # Apply time-gated outlier rejection
+        now = self.get_clock().now()
+        _, _, predicted_z = self.ekf.get_state()[:3]
+
+        dz = abs(predicted_z - depth)
+        time_since_last = (now - self.last_update_time).nanoseconds * 1e-9  # seconds
+
+        if dz > self.max_depth_jump:
+            if time_since_last < self.relock_window:
+                self.get_logger().warn(f"[track_node] Rejecting large jump dz={dz:.2f} (only {time_since_last:.2f}s since last valid update)")
+                return
+            else:
+                self.get_logger().info(f"[track_node] Large jump dz={dz:.2f} but {time_since_last:.2f}s passed — re-locking!")
 
         # Convert depth image coordinates to 3D camera space
         k = cam_info_msg.k
@@ -309,11 +332,14 @@ class TrackNode(LifecycleNode):
 
         if self.print_measurement_marker:
             self.debug_marker(x=float(x), y=0.0, z=float(z))
+            # self.debug_marker(x=float(x), y=float(y), z=float(z))
 
         # Update EKF after measurement
         self.ekf.update([x, y, z], dynamic_R=self.measurement_noise_cov)
 
         self.centroid = (float(cx), float(cy))
+
+        self.last_update_time = now
 
         return
     
@@ -520,71 +546,20 @@ class TrackNode(LifecycleNode):
         return int(cx[0]), int(cy[0])
     
 
-    def get_transform(self, frame_id: str) -> Tuple[np.ndarray]:
-        # transform position from image frame to target_frame
-        rotation = None
-        translation = None
 
-        try:
-            transform: TransformStamped = self.tf_buffer.lookup_transform(
-                self.target_frame, frame_id, rclpy.time.Time()
-            )
+    def transform_point_ros2(self, point: Tuple, transform: TransformStamped) -> Tuple:
+        ps = PointStamped()
+        ps.header.stamp = transform.header.stamp
+        ps.header.frame_id = transform.child_frame_id  # source frame
+        ps.point.x = point[0]
+        ps.point.y = point[1]
+        ps.point.z = point[2]
 
-            translation = np.array(
-                [
-                    transform.transform.translation.x,
-                    transform.transform.translation.y,
-                    transform.transform.translation.z,
-                ]
-            )
+        # Use the do_transform_point helper
+        transformed_ps = do_transform_point(ps, transform)
 
-            rotation = np.array(
-                [
-                    transform.transform.rotation.w,
-                    transform.transform.rotation.x,
-                    transform.transform.rotation.y,
-                    transform.transform.rotation.z,
-                ]
-            )
-
-            return translation, rotation
-
-        except TransformException as ex:
-            self.get_logger().error(f"Could not transform: {ex}")
-            return None
+        return (transformed_ps.point.x, transformed_ps.point.y, transformed_ps.point.z)
     
-    @staticmethod
-    def transform_point(
-        position: Tuple,
-        translation: np.ndarray,
-        rotation: np.ndarray,
-    ) -> Tuple:
-
-        # Rotate the position vector
-        rotated_position = TrackNode.qv_mult(
-            rotation,
-            np.array([
-                position[0],
-                position[1],
-                position[2],
-            ])
-        )
-
-        # Apply translation
-        position = rotated_position + translation
-
-        return position
-
-    
-
-    @staticmethod
-    def qv_mult(q: np.ndarray, v: np.ndarray) -> np.ndarray:
-        q = np.array(q, dtype=np.float64)
-        v = np.array(v, dtype=np.float64)
-        qvec = q[1:]
-        uv = np.cross(qvec, v)
-        uuv = np.cross(qvec, uv)
-        return v + 2 * (uv * q[0] + uuv)
 
 
 def main():

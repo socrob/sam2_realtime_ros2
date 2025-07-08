@@ -21,3 +21,4 @@ depth_scale = 1
 - Update and test Docker;
 - Apply transform to relevant frame (frame_id: rgb_camera_link). Fix y=0;
 - Add event_in to tracker;
+- Add time-gated outlier rejection;

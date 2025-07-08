@@ -35,7 +35,7 @@ if [ "$CAMERA_TYPE" == "azure" ]; then
     DEPTH_TOPIC="/k4a/depth_to_rgb/image_raw"
     CAM_INFO="/k4a/rgb/camera_info"
     CAM_FRAME="rgb_camera_link"
-    TARGET_FRAME="rgb_camera_link"
+    TARGET_FRAME="camera_base"
     DEPTH_DIVISOR="1"
 elif [ "$CAMERA_TYPE" == "realsense" ]; then
     DEPTH_TOPIC="/camera/camera/depth/image_rect_raw"
