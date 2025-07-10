@@ -1,0 +1,3 @@
+[submodule "sam2_realtime/sam2_realtime/segment-anything-2-real-time"]
+	path = sam2_realtime/sam2_realtime/segment-anything-2-real-time
+	url = https://github.com/Gy920/segment-anything-2-real-time.git
