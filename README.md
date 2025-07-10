@@ -1,4 +1,4 @@
-# 🎯 **SAM2 Real-Time ROS 2**
+# 🎯 **SAM2 Real-Time Tracker ROS 2**
 
 **`sam2_realtime_ros2`** is a ROS 2 wrapper for [Gy920/segment-anything-2-real-time](https://github.com/Gy920/segment-anything-2-real-time). It brings **Segment Anything 2** into real-time perception pipelines for robots using YOLO for prompt generation and an EKF for robust 3D tracking.
 
