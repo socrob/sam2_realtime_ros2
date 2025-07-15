@@ -11,24 +11,24 @@ This repository expects a **Python virtual environment** to isolate dependencies
 ```
 sam2_realtime_ros2/
 ├── sam2_realtime/
-│   ├── sam2_realtime_node.py   # SAM2 segmentation node
-│   ├── bbox_prompt_node.py     # YOLO bbox prompt
-│   ├── yolo_mask_prompt_node.py# YOLO mask prompt
-│   ├── ekf.py                  # EKF filter
-│   ├── track_node.py           # 3D tracker
-│   ├── segment-anything-2-real-time/  # Upstream submodule
-├── sam2_realtime_bringup/      # Launch files & shell scripts
+│   ├── sam2_realtime_node.py         # SAM2 segmentation node
+│   ├── yolo_prompt_node.py           # YOLO bbox prompt
+│   ├── yolo_mask_prompt_node.py      # YOLO mask prompt
+│   ├── ekf.py                        # EKF filter
+│   ├── track_node.py                # 3D tracker
+│   ├── segment-anything-2-real-time/ # Upstream submodule
+├── sam2_realtime_bringup/            # Launch files & shell scripts
 │   ├── launch/
 │   │   ├── sam2_realtime_node.sh
 │   │   ├── yolo_prompt_node.sh
 │   │   ├── track_node_2.sh
 │   │   └── *.launch.py
-├── sam2_realtime_msgs/         # Custom ROS messages
+├── sam2_realtime_msgs/               # Custom ROS messages
 │   ├── PromptBbox.msg
 │   ├── TrackedObject.msg
-├── docker/                     # Docker config
+├── docker/                           # Docker config
 ├── requirements.txt
-├── setup_env.sh                # One-step environment setup script
+├── setup_env.sh                      # One-step environment setup script
 └── ...
 ```
 
@@ -36,15 +36,18 @@ sam2_realtime_ros2/
 
 ## ⚙️ **How It Works**
 
-➜ **1️⃣ YOLO Prompt**  
+➜ **1️⃣ SAM2 Segmentation**  
+Run `sam2_realtime_node.py` to:
+- Load the **segment-anything-2-real-time** model
+- Await a prompt (bounding box or mask)
+
+➜ **2️⃣ YOLO Prompt**  
 Run a YOLO model to detect people or objects:
 - Outputs bounding box (`PromptBbox`) or mask prompt
-- Example nodes: `bbox_prompt_node.py` and `yolo_mask_prompt_node.py`
-
-➜ **2️⃣ SAM2 Wrapper**  
-`sam2_realtime_node.py`:
-- Loads the **segment-anything-2-real-time** model
-- Receives the YOLO prompt → segments mask in real-time
+- Requires a trigger via the `/sam2_bbox_prompt/event_in` topic
+- Example nodes:
+  - `yolo_prompt_node.py` (bbox)
+  - `yolo_mask_prompt_node.py` (mask)
 
 ➜ **3️⃣ EKF Tracking**  
 `track_node.py`:
@@ -54,11 +57,12 @@ Run a YOLO model to detect people or objects:
   - SAM2 mask
 - Computes robust 3D position in camera frame
 - Transforms point to `target_frame`
-- Filters position with an EKF for robust tracking
+- Filters position with an EKF
 - Publishes:
   - `/tracked_object`
   - `/measurement_marker` (RViz marker)
   - TF transform
+- Requires a trigger via the `/track_node/event_in` topic
 
 ---
 
@@ -71,84 +75,80 @@ colcon build
 source install/setup.bash
 ```
 
-2️⃣ **Create & activate a virtual environment:**
-
-```bash
-python3 -m venv ~/venvs/sam2_realtime_venv
-source ~/venvs/sam2_realtime_venv/bin/activate
-```
-
-3️⃣ **Run the `setup_env.sh` to install everything:**
+2️⃣ **Run the environment setup script:**
 
 ```bash
 ./setup_env.sh
 ```
 
 This script will:
-- Install Python dependencies for ROS 2
-- Install the upstream **SAM2** as editable
+- Create a virtual environment in `~/venvs/sam2_realtime_venv` (if not existing)
+- Install Python dependencies
+- Install the upstream **SAM2** repo in editable mode
 - Download checkpoints
-- Create and export `$SAM2_ASSETS_DIR` automatically by adding it to `~/.bashrc`
+- Export `SAM2_ASSETS_DIR` in your `~/.bashrc`
 
-✅ **Important:** Next time you open a shell, run `source ~/.bashrc` to make sure `$SAM2_ASSETS_DIR` is available.
+✅ After setup, activate everything with:
 
-The virtual environment **must be activated** each time you use the nodes.
+```bash
+source ~/venvs/sam2_realtime_venv/bin/activate
+source ~/.bashrc
+```
 
 ---
 
 ## 🎥 **Run Example**
 
+### Step-by-step:
+
 ```bash
-# 1. Run YOLO prompt node
-./yolo_prompt_node.sh --camera realsense
+# 1. Launch SAM2 node (waits for prompt)
+./sam2_realtime_node.sh --camera azure
 
-# 2. Run SAM2 segmentation node
-./sam2_realtime_node.sh --camera realsense
+# 2. Launch YOLO prompt (bounding box or mask)
+./yolo_prompt_node.sh --camera azure
+# Then trigger prompt:
+ros2 topic pub -1 /sam2_bbox_prompt/event_in std_msgs/msg/String "{data: 'e_start'}"
 
-# 3. Run EKF tracking node
-./track_node_2.sh --camera realsense
+# 3. Launch tracking node
+./track_node_2.sh --camera azure
+# Then trigger tracking:
+ros2 topic pub -1 /track_node/event_in std_msgs/msg/String "{data: 'e_start'}"
 ```
 
-Use `--camera azure` for Azure Kinect.
-
-The provided shell scripts:
-- Automatically activate the virtual environment
-- Use `$SAM2_ASSETS_DIR`
-- Configure camera topics, depth scale, and other parameters
+Use `--camera realsense` to run with RealSense instead.
 
 ---
 
 ## 🎯 **Camera Depth Scale**
 
 | Camera        | Depth scale |
-|---------------|--------------|
-| RealSense     | 1000         |
-| Orbbec        | 1            |
-| Azure Kinect  | 1            |
+|---------------|-------------|
+| RealSense     | 1000        |
+| Orbbec        | 1           |
+| Azure Kinect  | 1           |
 
-✅ These depth unit divisors are configured automatically in the example launch scripts.
+✅ These values are handled automatically by the launch scripts.
 
 ---
 
 ## 🐳 **Docker**
 
-A `docker/` folder provides `Dockerfile` + `docker-compose.yml`. Use this to containerize the entire pipeline. The virtual environment is still required **inside** the container — make sure you activate it as part of your entrypoint.
+A `docker/` folder provides `Dockerfile` + `docker-compose.yml`. Use this to containerize the entire pipeline. The virtual environment must still be activated **inside** the container.
 
 ---
 
 ## ✅ **TODO**
 
-- [ ] Update README with final details
+- [ ] Extend for multi-object tracking and latest updates
+- [ ] Final cleanup of Docker setup
 - [ ] Test `LifecycleNode` usage
-- [ ] Verify & update Docker setup
-- [ ] Add `event_in` for tracking control
-- [ ] Update SAM2 wrapper for multi-object segmentation and latest updates
 
 ---
 
 ## 🏷️ **Credits**
 
-- Upstream: [Gy920/segment-anything-2-real-time](https://github.com/Gy920/segment-anything-2-real-time) (included as a Git submodule)
+- Upstream: [Gy920/segment-anything-2-real-time](https://github.com/Gy920/segment-anything-2-real-time)
 - YOLOv8 (Ultralytics)
 - ROS 2 Humble or newer
 
