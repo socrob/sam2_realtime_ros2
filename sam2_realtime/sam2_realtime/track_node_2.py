@@ -112,6 +112,9 @@ class TrackNode(LifecycleNode):
         # Tracker Publisher
         self._pub = self.create_publisher(TrackedObject, "tracked_object", 10)
 
+        # (TODO) ROS1 publisher
+        self._point_pub = self.create_publisher(PointStamped, '/ros1_tracked_position', 10)
+
         # Debug publisher
         self._meas_marker_pub = self.create_publisher(Marker, "measurement_marker", 10)
 
@@ -212,6 +215,8 @@ class TrackNode(LifecycleNode):
 
         self.destroy_publisher(self._pub)
         self.destroy_publisher(self._meas_marker_pub)
+        # TODO ROS1 fix
+        self.destroy_publisher(self._point_pub)
 
         super().on_cleanup(state)
         self.get_logger().info(f"[{self.get_name()}] Cleaned up")
@@ -275,6 +280,15 @@ class TrackNode(LifecycleNode):
         self.publish_tf_from_tracked_object(tracker_msg=tracker_msg)
 
         self._pub.publish(tracker_msg)
+
+        # Publish PointStamped message
+        # (#TODO Remove further ahead. ROS1 fix)
+        point_msg = PointStamped()
+        point_msg.header.stamp = now
+        point_msg.header.frame_id = self.target_frame
+        point_msg.point = tracker_msg.position
+
+        self._point_pub.publish(point_msg)
 
    
     def process_detections(self, depth_msg: Image, cam_info_msg: CameraInfo, tracker_msg: TrackedObject) -> None:
