@@ -17,6 +17,8 @@ def generate_launch_description():
         DeclareLaunchArgument('min_mask_area', default_value='1000'),
         DeclareLaunchArgument('predict_rate', default_value='10'),
         DeclareLaunchArgument('print_measurement_marker', default_value='true'),
+        DeclareLaunchArgument('max_depth_jump', default_value='0.3'),
+        DeclareLaunchArgument('relock_window', default_value='1'),
 
         Node(
             package='sam2_realtime',
@@ -35,6 +37,8 @@ def generate_launch_description():
                 'camera_frame': LaunchConfiguration('camera_frame'),
                 'predict_rate': LaunchConfiguration('predict_rate'),
                 'print_measurement_marker': LaunchConfiguration('print_measurement_marker'),
+                'max_depth_jump': LaunchConfiguration('max_depth_jump'),
+                'relock_window': LaunchConfiguration('relock_window'),
             }],
         )
     ])

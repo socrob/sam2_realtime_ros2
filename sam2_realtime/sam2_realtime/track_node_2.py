@@ -53,6 +53,8 @@ class TrackNode(LifecycleNode):
         self.declare_parameter("camera_frame", "rgb_camera_link")
         self.declare_parameter("predict_rate", 10)
         self.declare_parameter("print_measurement_marker", True)
+        self.declare_parameter("max_depth_jump", 0.3) #meters
+        self.declare_parameter("relock_window", 1) #seconds
 
         self.tf_buffer = Buffer()
         self.cv_bridge = CvBridge()
@@ -75,6 +77,9 @@ class TrackNode(LifecycleNode):
         dimg_reliability = (self.get_parameter("depth_image_reliability").get_parameter_value().integer_value)
         dinfo_reliability = (self.get_parameter("depth_info_reliability").get_parameter_value().integer_value)
         self.print_measurement_marker = (self.get_parameter("print_measurement_marker").get_parameter_value().bool_value)
+        self.max_depth_jump = (self.get_parameter("max_depth_jump").get_parameter_value().double_value)
+        self.relock_window = (self.get_parameter("relock_window").get_parameter_value().integer_value)
+        
 
         self.depth_image_qos_profile = QoSProfile(
             reliability=dimg_reliability,
@@ -140,8 +145,6 @@ class TrackNode(LifecycleNode):
 
         # Time gated outlier rejection params
         self.last_update_time = self.get_clock().now()
-        self.max_depth_jump = 0.3 #meters
-        self.relock_window = 1 #seconds
         
         super().on_configure(state)
         self.get_logger().info(f"[{self.get_name()}] Configured")
