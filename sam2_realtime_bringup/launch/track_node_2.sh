@@ -57,6 +57,7 @@ ros2 launch sam2_realtime_bringup track_node_2.launch.py \
   target_frame:="$TARGET_FRAME" \
   depth_image_units_divisor:="$DEPTH_DIVISOR" \
   print_measurement_marker:="true" \
+  tracking_active:="false" \
   min_mask_area:="1000" \
   max_depth_jump:="0.3" \
   relock_window:="1" \

@@ -20,7 +20,7 @@ from tf2_ros import TransformBroadcaster
 
 from geometry_msgs.msg import PointStamped
 from tf2_geometry_msgs.tf2_geometry_msgs import do_transform_point
-
+from std_msgs.msg import String
 
 from sensor_msgs.msg import CameraInfo, Image
 from geometry_msgs.msg import TransformStamped
@@ -55,6 +55,7 @@ class TrackNode(LifecycleNode):
         self.declare_parameter("print_measurement_marker", True)
         self.declare_parameter("max_depth_jump", 0.3) #meters
         self.declare_parameter("relock_window", 1) #seconds
+        self.declare_parameter("tracking_active", False) #event_in
 
         self.tf_buffer = Buffer()
         self.cv_bridge = CvBridge()
@@ -79,6 +80,7 @@ class TrackNode(LifecycleNode):
         self.print_measurement_marker = (self.get_parameter("print_measurement_marker").get_parameter_value().bool_value)
         self.max_depth_jump = (self.get_parameter("max_depth_jump").get_parameter_value().double_value)
         self.relock_window = (self.get_parameter("relock_window").get_parameter_value().integer_value)
+        self.tracking_active = (self.get_parameter("tracking_active").get_parameter_value().bool_value)
         
 
         self.depth_image_qos_profile = QoSProfile(
@@ -173,6 +175,8 @@ class TrackNode(LifecycleNode):
         # )
         self._synchronizer.registerCallback(self.process_detections)
 
+        self._event_sub = self.create_subscription(String, "track_node/event_in", self.event_callback, 10)
+
         self.timer = self.create_timer(1.0 / self.rate, self.run)
 
         super().on_activate(state)
@@ -186,6 +190,7 @@ class TrackNode(LifecycleNode):
         self.destroy_subscription(self.depth_sub.sub)
         self.destroy_subscription(self.cam_info_sub.sub)
         self.destroy_subscription(self.detections_sub.sub)
+        self.destroy_subscription(self._event_sub)
 
         del self._synchronizer
         
@@ -222,6 +227,8 @@ class TrackNode(LifecycleNode):
         """
         Periodically predicts EKF state and publishes the tracked object message and TF.
         """
+        if not self.tracking_active:
+            return
 
         # Transform point
         transform = self.tf_buffer.lookup_transform(self.target_frame, self.camera_frame, rclpy.time.Time())
@@ -282,6 +289,9 @@ class TrackNode(LifecycleNode):
         Returns:
             TrackedObject: Updated message with 3D position filled in.
         """
+        if not self.tracking_active:
+            return
+
         # If mask is not available, there is no point in tracking
         if not tracker_msg.mask:
             return
@@ -563,6 +573,15 @@ class TrackNode(LifecycleNode):
 
         return (transformed_ps.point.x, transformed_ps.point.y, transformed_ps.point.z)
     
+    def event_callback(self, msg: String):
+        if msg.data == "e_stop":
+            self.tracking_active = False
+            self.get_logger().info("[track_node] Received e_stop → pausing tracking.")
+        elif msg.data == "e_start":
+            self.tracking_active = True
+            self.get_logger().info("[track_node] Received e_start → resuming tracking.")
+        else:
+            self.get_logger().warn(f"[track_node] Unknown event: '{msg.data}'")
 
 
 def main():

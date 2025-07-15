@@ -19,6 +19,7 @@ def generate_launch_description():
         DeclareLaunchArgument('print_measurement_marker', default_value='true'),
         DeclareLaunchArgument('max_depth_jump', default_value='0.3'),
         DeclareLaunchArgument('relock_window', default_value='1'),
+        DeclareLaunchArgument('tracking_active', default_value='false'),
 
         Node(
             package='sam2_realtime',
@@ -39,6 +40,7 @@ def generate_launch_description():
                 'print_measurement_marker': LaunchConfiguration('print_measurement_marker'),
                 'max_depth_jump': LaunchConfiguration('max_depth_jump'),
                 'relock_window': LaunchConfiguration('relock_window'),
+                'tracking_active': LaunchConfiguration('tracking_active'),
             }],
         )
     ])
