@@ -35,7 +35,7 @@ fi
 if [ "$CAMERA_TYPE" == "azure" ]; then
     DEPTH_TOPIC="/k4a/depth_to_rgb/image_raw"
     CAM_INFO="/k4a/rgb/camera_info"
-    TARGET_FRAME="camera_base"
+    TARGET_FRAME="rgb_camera_link"
     DEPTH_DIVISOR="1" # Azure K4A typically publishes meters already
 elif [ "$CAMERA_TYPE" == "realsense" ]; then
     # Standard RealSense topics
