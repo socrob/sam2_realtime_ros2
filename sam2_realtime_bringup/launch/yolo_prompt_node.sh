@@ -5,7 +5,7 @@ set -e
 
 # Defaults
 CAMERA_TYPE="realsense"          # azure | realsense
-DETECT_CLASS="book"            # e.g., "book", "person, cup" or "all"
+DETECT_CLASS="cup"            # e.g., "book", "person, cup" or "all"
 YOLO_MODEL="yolov8n.pt"          # can be yolov8s.pt, custom .pt, etc.
 CONF=0.4
 MIN_AREA=800

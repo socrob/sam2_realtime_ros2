@@ -161,6 +161,14 @@ class TrackNode(LifecycleNode):
         depth_image = self.cv_bridge.imgmsg_to_cv2(depth_msg, desired_encoding="passthrough")
         mask = self.cv_bridge.imgmsg_to_cv2(mask_msg, desired_encoding="mono8")
 
+        # --- TODO: mask cleanup ---
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((3,3), np.uint8), iterations=1)
+        mask = cv2.erode(mask, np.ones((3,3), np.uint8), iterations=1)
+
+        # --- TODO: depth smoothing ---
+        depth_f = depth_image.copy()
+        depth_f = cv2.medianBlur(depth_f, 3)
+
         # Check mask size (ignore if mask is too small)
         num_pixels = cv2.countNonZero(mask)
         if num_pixels < self.min_mask_area:
@@ -174,9 +182,20 @@ class TrackNode(LifecycleNode):
         # Build 3D points (in depth frame)
         src_frame = depth_msg.header.frame_id
         stamp = depth_msg.header.stamp
-        points_cam = self.mask_to_points(depth_image, mask, fx, fy, cx, cy)
+        points_cam = self.mask_to_points(depth_f, mask, fx, fy, cx, cy)
         if len(points_cam) == 0:
             return None
+        
+        # TODO: Optional 3D MAD filter
+        if len(points_cam) > 100:
+            P = np.asarray(points_cam, dtype=np.float32)
+            z = P[:, 2]
+            z_med = np.median(z)
+            mad = np.median(np.abs(z - z_med)) + 1e-6
+            keep = np.abs(z - z_med) / mad < 6.0
+            points_cam = P[keep].tolist()
+            if len(points_cam) == 0:
+                return None
 
         # Transform points to target_frame if needed
         tgt_frame = self.target_frame
@@ -221,19 +240,32 @@ class TrackNode(LifecycleNode):
         ys = ys[::stride]
         xs = xs[::stride]
 
+        # --- TODO: robust z limits computed from the whole mask (not only sampled points) ---
+        z_mask = depth[mask_bool].astype(np.float32) / max(1, self.depth_image_units_divisor)
+        z_mask = z_mask[(z_mask > 0) & np.isfinite(z_mask)]
+        if z_mask.size >= 20:
+            z_med = float(np.median(z_mask))
+            iqr = float(np.subtract(*np.percentile(z_mask, [75, 25])))
+            z_lo = max(0.0, z_med - 1.5 * iqr)
+            z_hi = z_med + 1.5 * iqr
+        else:
+            z_lo, z_hi = 0.0, np.inf
+
         z = depth[ys, xs].astype(np.float32) / max(1, self.depth_image_units_divisor)
-        valid = z > 0
+        valid = (z > 0) & (z >= z_lo) & (z <= z_hi)
         if not np.any(valid):
             return []
+
         xs = xs[valid].astype(np.float32)
         ys = ys[valid].astype(np.float32)
         z = z[valid]
 
-        # Project to 3D (camera/depth frame)
+        # Project to 3D
         X = (xs - cx) * z / fx
         Y = (ys - cy) * z / fy
         points = np.stack((X, Y, z), axis=-1)
         return points.tolist()
+
 
     def apply_transform_to_points(self, points: List[Tuple[float, float, float]], tf: TransformStamped) -> List[Tuple[float, float, float]]:
         """Apply a geometry_msgs/TransformStamped to a list of (x,y,z) points using do_transform_point.
