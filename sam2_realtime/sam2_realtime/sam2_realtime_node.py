@@ -61,14 +61,12 @@ class SAM2Node(LifecycleNode):
                 torch.backends.cuda.matmul.allow_tf32 = True
                 torch.backends.cudnn.allow_tf32 = True
 
-            # Load SAM2 predictor
-            self.predictor = build_sam2_camera_predictor(self.model_cfg, self.checkpoint)
 
             self.cv_bridge = CvBridge()
 
             # Lifecycle Publisher
-            self._pub = self.create_lifecycle_publisher(TrackedObject, "/sam2/mask", 10)
-            self._img_pub = self.create_lifecycle_publisher(Image, "/sam2/img_mask", 10)
+            self._pub = self.create_lifecycle_publisher(TrackedObject, "mask", 10)
+            self._img_pub = self.create_lifecycle_publisher(Image, "img_mask", 10)
 
             super().on_configure(state)
             self.get_logger().info('[sam2_node] SAM2 model loaded')
@@ -83,6 +81,13 @@ class SAM2Node(LifecycleNode):
     def on_activate(self, state: LifecycleState) -> TransitionCallbackReturn:
         try:
             self.get_logger().info('[sam2_node] Activating...')
+            
+            # Load SAM2 predictor
+            try:
+                self.predictor = build_sam2_camera_predictor(self.model_cfg, self.checkpoint)
+            except FileNotFoundError:
+                self.get_logger().error(f"Model file '{self.model_cfg}' does not exists")
+                return TransitionCallbackReturn.ERROR
 
             self.initialized = False
             self.bbox = None
@@ -104,12 +109,19 @@ class SAM2Node(LifecycleNode):
     def on_deactivate(self, state: LifecycleState) -> TransitionCallbackReturn:
         try:
             self.get_logger().info('[sam2_node] Deactivating...')
+            
+            del self.predictor
+            self.get_logger().info("Clearing CUDA cache")
+            torch.cuda.empty_cache()
+
             self.destroy_subscription(self.image_sub)
             self.destroy_subscription(self.prompt_sub)
             self.destroy_subscription(self.prompt_mask_sub)
+
             self.initialized = False
             self.bbox = None
             self.mask_prompt = None
+            
             super().on_deactivate(state)
             self.get_logger().info('[sam2_node] Deactivated')
             return TransitionCallbackReturn.SUCCESS
@@ -121,14 +133,19 @@ class SAM2Node(LifecycleNode):
     def on_cleanup(self, state: LifecycleState) -> TransitionCallbackReturn:
         try:
             self.get_logger().info('[sam2_node] Cleaning up...')
-            self.predictor = None
+            
             self.initialized = False
             self.bbox = None
             self.mask_prompt = None
+            
             # Destroy Publisher
+            self.destroy_publisher(self._pub)
+            self.destroy_publisher(self._img_pub)
+            
             del self.qos
             super().on_cleanup(state)
             return TransitionCallbackReturn.SUCCESS
+        
         except Exception as e:
             self.get_logger().error(f"[sam2_node] Exception during cleanup: {e}")
             self.get_logger().error(traceback.format_exc())
