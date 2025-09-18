@@ -48,7 +48,11 @@ if [ -z "$IMAGE_TOPIC" ]; then
   if [ "$CAMERA_TYPE" == "azure" ]; then
     IMAGE_TOPIC="/k4a/rgb/image_raw"
   elif [ "$CAMERA_TYPE" == "realsense" ]; then
-    IMAGE_TOPIC="/camera/color/image_raw"
+    IMAGE_TOPIC="/camera/camera/color/image_raw"
+  elif [ "$CAMERA_TYPE" == "sim_head" ]; then
+    IMAGE_TOPIC="/head_front_camera/rgb/image_raw"
+  elif [ "$CAMERA_TYPE" == "sim_wrist" ]; then
+    IMAGE_TOPIC="/realsense_d435/color/image_raw"
   else
     echo "❌ Unknown camera type: $CAMERA_TYPE (expected: azure or realsense)"; exit 1
   fi

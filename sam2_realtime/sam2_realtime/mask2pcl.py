@@ -15,7 +15,7 @@ from rclpy.time import Time
 import message_filters
 from cv_bridge import CvBridge
 from tf2_ros.buffer import Buffer
-from tf2_ros import TransformException
+from tf2_ros import TransformException, TransformListener
 from geometry_msgs.msg import PointStamped
 from tf2_geometry_msgs.tf2_geometry_msgs import do_transform_point
 from rclpy.duration import Duration
@@ -50,6 +50,7 @@ class TrackNode(LifecycleNode):
         self.declare_parameter("cloud_stride", 4)          # downsample factor when building PCL
 
         self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
         self.cv_bridge = CvBridge()
 
     # ---------------- Lifecycle -----------------

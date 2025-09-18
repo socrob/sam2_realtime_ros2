@@ -39,10 +39,22 @@ if [ "$CAMERA_TYPE" == "azure" ]; then
     DEPTH_DIVISOR="1" # Azure K4A typically publishes meters already
 elif [ "$CAMERA_TYPE" == "realsense" ]; then
     # Standard RealSense topics
-    DEPTH_TOPIC="/camera/depth/image_rect_raw"
-    CAM_INFO="/camera/color/camera_info"
+    DEPTH_TOPIC="/camera/camera/depth/image_rect_raw"
+    CAM_INFO="/camera/camera/color/camera_info"
     TARGET_FRAME="camera_color_optical_frame"
     DEPTH_DIVISOR="1000" # RealSense depth is in millimeters
+elif [ "$CAMERA_TYPE" == "sim_head" ]; then
+    DEPTH_TOPIC="/head_front_camera/depth/image_raw"
+    CAM_INFO="/head_front_camera/rgb/camera_info"
+    # TARGET_FRAME="head_front_camera_link"
+    TARGET_FRAME="base_footprint"
+    DEPTH_DIVISOR="1"
+elif [ "$CAMERA_TYPE" == "sim_wrist" ]; then
+    DEPTH_TOPIC="/realsense_d435/aligned_depth_to_color/image_raw"
+    CAM_INFO="/realsense_d435/aligned_depth_to_color/camera_info"
+    # TARGET_FRAME="realsense_d435_link"
+    TARGET_FRAME="base_footprint"
+    DEPTH_DIVISOR="1000"
 else
     echo "❌ Unknown camera type: $CAMERA_TYPE (expected: azure or realsense)"; exit 1
 fi
