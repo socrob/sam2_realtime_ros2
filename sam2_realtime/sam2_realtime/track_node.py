@@ -55,7 +55,7 @@ class TrackNode(LifecycleNode):
         self.declare_parameter("print_measurement_marker", True)
         self.declare_parameter("max_depth_jump", 0.3) #meters
         self.declare_parameter("relock_window", 1) #seconds
-        self.declare_parameter("tracking_active", False) #event_in
+        self.declare_parameter("enable", False) #event_in
 
         self.tf_buffer = Buffer()
         self.cv_bridge = CvBridge()
@@ -80,7 +80,7 @@ class TrackNode(LifecycleNode):
         self.print_measurement_marker = (self.get_parameter("print_measurement_marker").get_parameter_value().bool_value)
         self.max_depth_jump = (self.get_parameter("max_depth_jump").get_parameter_value().double_value)
         self.relock_window = (self.get_parameter("relock_window").get_parameter_value().integer_value)
-        self.tracking_active = (self.get_parameter("tracking_active").get_parameter_value().bool_value)
+        self.enable = (self.get_parameter("enable").get_parameter_value().bool_value)
         
 
         self.depth_image_qos_profile = QoSProfile(
@@ -232,7 +232,7 @@ class TrackNode(LifecycleNode):
         """
         Periodically predicts EKF state and publishes the tracked object message and TF.
         """
-        if not self.tracking_active:
+        if not self.enable:
             return
 
         # Transform point
@@ -303,7 +303,7 @@ class TrackNode(LifecycleNode):
         Returns:
             TrackedObject: Updated message with 3D position filled in.
         """
-        if not self.tracking_active:
+        if not self.enable:
             return
 
         # If mask is not available, there is no point in tracking
@@ -589,10 +589,10 @@ class TrackNode(LifecycleNode):
     
     def event_callback(self, msg: String):
         if msg.data == "e_stop":
-            self.tracking_active = False
+            self.enable = False
             self.get_logger().info("[track_node] Received e_stop → pausing tracking.")
         elif msg.data == "e_start":
-            self.tracking_active = True
+            self.enable = True
             self.get_logger().info("[track_node] Received e_start → resuming tracking.")
         else:
             self.get_logger().warn(f"[track_node] Unknown event: '{msg.data}'")

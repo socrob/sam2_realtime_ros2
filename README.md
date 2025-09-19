@@ -21,7 +21,7 @@ sam2_realtime_ros2/
 │   ├── launch/
 │   │   ├── sam2_realtime_node.sh
 │   │   ├── yolo_prompt_node.sh
-│   │   ├── track_node_2.sh
+│   │   ├── track_node.sh
 │   │   └── *.launch.py
 ├── sam2_realtime_msgs/               # Custom ROS messages
 │   ├── PromptBbox.msg
@@ -111,7 +111,7 @@ source ~/.bashrc
 ros2 topic pub -1 /sam2_bbox_prompt/event_in std_msgs/msg/String "{data: 'e_start'}"
 
 # 3. Launch tracking node
-./track_node_2.sh --camera azure
+./track_node.sh --camera azure
 # Then trigger tracking:
 ros2 topic pub -1 /track_node/event_in std_msgs/msg/String "{data: 'e_start'}"
 ```

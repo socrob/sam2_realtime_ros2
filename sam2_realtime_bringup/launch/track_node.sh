@@ -50,14 +50,14 @@ fi
 
 # Run the tracking node via launch file
 echo "🚀 Launching Track Node for $CAMERA_TYPE..."
-ros2 launch sam2_realtime_bringup track_node_2.launch.py \
+ros2 launch sam2_realtime_bringup track_node.launch.py \
   depth_topic:="$DEPTH_TOPIC" \
   cam_info:="$CAM_INFO" \
-  cam_frame:="$CAM_FRAME" \
+  camera_frame:="$CAM_FRAME" \
   target_frame:="$TARGET_FRAME" \
   depth_image_units_divisor:="$DEPTH_DIVISOR" \
   print_measurement_marker:="true" \
-  tracking_active:="false" \
+  enable:="false" \
   min_mask_area:="1000" \
   max_depth_jump:="0.3" \
   relock_window:="1" \
@@ -66,5 +66,5 @@ ros2 launch sam2_realtime_bringup track_node_2.launch.py \
 
 
 # USAGE EXAMPLE
-# ./track_node_2.sh --camera azure
-# ./track_node_2.sh --camera realsense
+# ./track_node.sh --camera azure
+# ./track_node.sh --camera realsense

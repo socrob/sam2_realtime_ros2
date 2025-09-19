@@ -45,7 +45,7 @@ class TrackNode(LifecycleNode):
         self.declare_parameter('sam2_mask_topic', '/sam2/mask')
         self.declare_parameter("depth_image_reliability", QoSReliabilityPolicy.BEST_EFFORT)
         self.declare_parameter("depth_info_reliability", QoSReliabilityPolicy.BEST_EFFORT)
-        self.declare_parameter("tracking_active", False)  # event_in
+        self.declare_parameter("enable", False)  # event_in
         self.declare_parameter("min_mask_area", 100)       # reject tiny masks
         self.declare_parameter("cloud_stride", 4)          # downsample factor when building PCL
 
@@ -64,7 +64,7 @@ class TrackNode(LifecycleNode):
         self.maximum_detection_threshold = self.get_parameter("maximum_detection_threshold").get_parameter_value().double_value
         self.depth_image_units_divisor = self.get_parameter("depth_image_units_divisor").get_parameter_value().integer_value
         dimg_reliability = self.get_parameter("depth_image_reliability").get_parameter_value().integer_value
-        self.tracking_active = self.get_parameter("tracking_active").get_parameter_value().bool_value
+        self.enable = self.get_parameter("enable").get_parameter_value().bool_value
         self.min_mask_area = self.get_parameter("min_mask_area").get_parameter_value().integer_value
         self.cloud_stride = max(1, self.get_parameter("cloud_stride").get_parameter_value().integer_value)
 
@@ -134,7 +134,7 @@ class TrackNode(LifecycleNode):
 
     # ---------------- Callbacks -----------------
     def on_detections(self, depth_msg: Image, cam_info_msg: CameraInfo, detections_msg: TrackedObject) -> None:
-        if not self.tracking_active:
+        if not self.enable:
             return
 
         # Just forward the depth, camera info, and the mask image to processing
@@ -336,10 +336,10 @@ class TrackNode(LifecycleNode):
     # ---------------- Events --------------------
     def event_callback(self, msg: String):
         if msg.data == "e_stop":
-            self.tracking_active = False
+            self.enable = False
             self.get_logger().info("[track_node] Received e_stop → pausing tracking.")
         elif msg.data == "e_start":
-            self.tracking_active = True
+            self.enable = True
             self.get_logger().info("[track_node] Received e_start → resuming tracking.")
         else:
             self.get_logger().warn(f"[track_node] Unknown event: '{msg.data}'")

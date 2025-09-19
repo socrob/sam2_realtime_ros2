@@ -19,12 +19,12 @@ def generate_launch_description():
         DeclareLaunchArgument('print_measurement_marker', default_value='true'),
         DeclareLaunchArgument('max_depth_jump', default_value='0.3'),
         DeclareLaunchArgument('relock_window', default_value='1'),
-        DeclareLaunchArgument('tracking_active', default_value='false'),
+        DeclareLaunchArgument('enable', default_value='false'),
 
         Node(
             package='sam2_realtime',
-            executable='track_node_2',
-            name='track_node_2',
+            executable='track_node',
+            name='track_node',
             output='screen',
             parameters=[{
                 'depth_topic': LaunchConfiguration('depth_topic'),
@@ -40,7 +40,7 @@ def generate_launch_description():
                 'print_measurement_marker': LaunchConfiguration('print_measurement_marker'),
                 'max_depth_jump': LaunchConfiguration('max_depth_jump'),
                 'relock_window': LaunchConfiguration('relock_window'),
-                'tracking_active': LaunchConfiguration('tracking_active'),
+                'enable': LaunchConfiguration('enable'),
             }],
         )
     ])

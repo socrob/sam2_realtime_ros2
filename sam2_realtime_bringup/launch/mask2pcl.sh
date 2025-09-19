@@ -71,7 +71,7 @@ ros2 launch sam2_realtime_bringup mask2pcl.launch.py \
     sam2_mask_topic:="${SAM2_MASK_TOPIC}" \
     target_frame:="${TARGET_FRAME}" \
     depth_image_units_divisor:="${DEPTH_DIVISOR}" \
-    tracking_active:=true \
+    enable:=true \
     min_mask_area:=200 \
     cloud_stride:=2
 
