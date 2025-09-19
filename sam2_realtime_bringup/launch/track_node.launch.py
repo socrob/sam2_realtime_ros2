@@ -6,6 +6,7 @@ from launch.actions import DeclareLaunchArgument
 
 def generate_launch_description():
     return LaunchDescription([
+        DeclareLaunchArgument('namespace', default_value='track_node'),
         DeclareLaunchArgument('depth_topic', default_value='/k4a/depth_to_rgb/image_raw'),
         DeclareLaunchArgument('cam_info', default_value='/k4a/rgb/camera_info'),
         DeclareLaunchArgument('target_frame', default_value='rgb_camera_link'),
@@ -24,6 +25,7 @@ def generate_launch_description():
         Node(
             package='sam2_realtime',
             executable='track_node',
+            namespace=LaunchConfiguration('namespace'),
             name='track_node',
             output='screen',
             parameters=[{

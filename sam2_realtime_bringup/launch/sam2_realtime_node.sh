@@ -54,6 +54,7 @@ fi
 # === RUN NODE ===
 echo "🚀 Launching SAM2 node using $CAMERA_TYPE topics..."
 ros2 launch sam2_realtime_bringup sam2_realtime_node.launch.py \
+    namespace:=sam2 \
     image_topic:=${IMAGE_TOPIC} \
     image_reliability:=2 \
     model_cfg:=configs/sam2.1/sam2.1_hiera_s.yaml \

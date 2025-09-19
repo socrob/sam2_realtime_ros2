@@ -178,7 +178,7 @@ class TrackNode(LifecycleNode):
         # )
         self._synchronizer.registerCallback(self.process_detections)
 
-        self._event_sub = self.create_subscription(String, "track_node/event_in", self.event_callback, 10)
+        self._event_sub = self.create_subscription(String, "event_in", self.event_callback, 10)
 
         self.timer = self.create_timer(1.0 / self.rate, self.run)
 

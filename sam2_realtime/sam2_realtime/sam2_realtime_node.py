@@ -94,8 +94,8 @@ class SAM2Node(LifecycleNode):
             self.mask_prompt = None
 
             self.image_sub = self.create_subscription(Image, self.image_topic, self.image_cb, self.qos)
-            self.prompt_sub = self.create_subscription(PromptBbox, '/sam2/init_prompt', self.prompt_cb, 10)
-            self.prompt_mask_sub = self.create_subscription(Image, '/sam2/init_prompt_mask', self.prompt_mask_cb, 10)
+            self.prompt_sub = self.create_subscription(PromptBbox, 'init_prompt', self.prompt_cb, 10)
+            self.prompt_mask_sub = self.create_subscription(Image, 'init_prompt_mask', self.prompt_mask_cb, 10)
 
             super().on_activate(state)
             self.get_logger().info('[sam2_node] Subscriptions activated')

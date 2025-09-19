@@ -66,6 +66,7 @@ SAM2_MASK_TOPIC="/sam2/mask"
 # Run the node via the launch file
 echo "🚀 Launching mask2pcl for $CAMERA_TYPE..."
 ros2 launch sam2_realtime_bringup mask2pcl.launch.py \
+    namespace:="mask2pcl" \
     depth_topic:="${DEPTH_TOPIC}" \
     cam_info:="${CAM_INFO}" \
     sam2_mask_topic:="${SAM2_MASK_TOPIC}" \

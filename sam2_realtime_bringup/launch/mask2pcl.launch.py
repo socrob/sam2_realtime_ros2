@@ -5,6 +5,7 @@ from launch.actions import DeclareLaunchArgument
 
 def generate_launch_description():
     return LaunchDescription([
+        DeclareLaunchArgument('namespace', default_value='mask2pcl'),
         DeclareLaunchArgument('depth_topic', default_value='/k4a/depth_to_rgb/image_raw'),
         DeclareLaunchArgument('cam_info', default_value='/k4a/rgb/camera_info'),
         DeclareLaunchArgument('sam2_mask_topic', default_value='/sam2/mask'),
@@ -21,6 +22,7 @@ def generate_launch_description():
         Node(
             package='sam2_realtime',
             executable='mask2pcl',
+            namespace=LaunchConfiguration('namespace'),
             name='mask2pcl',
             output='screen',
             parameters=[{

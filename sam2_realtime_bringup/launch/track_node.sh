@@ -51,6 +51,7 @@ fi
 # Run the tracking node via launch file
 echo "🚀 Launching Track Node for $CAMERA_TYPE..."
 ros2 launch sam2_realtime_bringup track_node.launch.py \
+  namespace:="track_node" \
   depth_topic:="$DEPTH_TOPIC" \
   cam_info:="$CAM_INFO" \
   camera_frame:="$CAM_FRAME" \
