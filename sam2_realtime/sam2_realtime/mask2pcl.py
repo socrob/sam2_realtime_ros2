@@ -337,12 +337,12 @@ class TrackNode(LifecycleNode):
     def event_callback(self, msg: String):
         if msg.data == "e_stop":
             self.enable = False
-            self.get_logger().info("[track_node] Received e_stop → pausing tracking.")
+            self.get_logger().info("[mask2pcl_node] Received e_stop → pausing tracking.")
         elif msg.data == "e_start":
             self.enable = True
-            self.get_logger().info("[track_node] Received e_start → resuming tracking.")
+            self.get_logger().info("[mask2pcl_node] Received e_start → resuming tracking.")
         else:
-            self.get_logger().warn(f"[track_node] Unknown event: '{msg.data}'")
+            self.get_logger().warn(f"[mask2pcl_node] Unknown event: '{msg.data}'")
 
 
 def main():
