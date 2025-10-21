@@ -245,7 +245,9 @@ class TrackNode(LifecycleNode):
         self.position = tuple(self.ekf.get_state()[:3])
 
         # Ignoring height before transformation. In the camera frame (Azure) matches y=0
-        self.position_no_height = (self.position[0], 0.0, self.position[2])
+        #TODO
+        # self.position_no_height = (self.position[0], 0.0, self.position[2])
+        self.position_no_height = (self.position[0], self.position[1], self.position[2])
         
         # Apply transform to point
         self.transformed_position = self.transform_point_ros2(self.position_no_height, transform)
@@ -357,9 +359,10 @@ class TrackNode(LifecycleNode):
         x = (int(cx) - px) * z / fx
         y = (int(cy) - py) * z / fy
 
+        #TODO
         if self.print_measurement_marker:
-            self.debug_marker(x=float(x), y=0.0, z=float(z))
-            # self.debug_marker(x=float(x), y=float(y), z=float(z))
+            # self.debug_marker(x=float(x), y=0.0, z=float(z))
+            self.debug_marker(x=float(x), y=float(y), z=float(z))
 
         # Update EKF after measurement
         self.ekf.update([x, y, z], dynamic_R=self.measurement_noise_cov)
