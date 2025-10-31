@@ -50,7 +50,6 @@ class TrackNode(LifecycleNode):
         self.declare_parameter('sam2_mask_topic', '/sam2/mask')
         self.declare_parameter("depth_image_reliability", QoSReliabilityPolicy.BEST_EFFORT)
         self.declare_parameter("depth_info_reliability", QoSReliabilityPolicy.BEST_EFFORT)
-        self.declare_parameter("camera_frame", "rgb_camera_link")
         self.declare_parameter("predict_rate", 10)
         self.declare_parameter("print_measurement_marker", True)
         self.declare_parameter("max_depth_jump", 0.3) #meters
@@ -69,7 +68,6 @@ class TrackNode(LifecycleNode):
         self.cam_info = self.get_parameter('cam_info').get_parameter_value().string_value
         self.sam2_mask_topic = self.get_parameter('sam2_mask_topic').get_parameter_value().string_value
         self.target_frame = (self.get_parameter("target_frame").get_parameter_value().string_value)
-        self.camera_frame = (self.get_parameter("camera_frame").get_parameter_value().string_value)
         self.depth_filter_percentage = (self.get_parameter("depth_filter_percentage").get_parameter_value().double_value)
         self.maximum_detection_threshold = (self.get_parameter("maximum_detection_threshold").get_parameter_value().double_value)
         self.min_mask_area = (self.get_parameter("min_mask_area").get_parameter_value().integer_value)
@@ -81,6 +79,7 @@ class TrackNode(LifecycleNode):
         self.max_depth_jump = (self.get_parameter("max_depth_jump").get_parameter_value().double_value)
         self.relock_window = (self.get_parameter("relock_window").get_parameter_value().integer_value)
         self.enable = (self.get_parameter("enable").get_parameter_value().bool_value)
+        self.camera_frame = None
         
 
         self.depth_image_qos_profile = QoSProfile(
@@ -189,6 +188,8 @@ class TrackNode(LifecycleNode):
 
     def on_deactivate(self, state: LifecycleState) -> TransitionCallbackReturn: 
         self.get_logger().info(f"[{self.get_name()}] Deactivating...")
+        
+        self.camera_frame = None
 
         self.destroy_subscription(self.depth_sub.sub)
         self.destroy_subscription(self.cam_info_sub.sub)
@@ -233,6 +234,10 @@ class TrackNode(LifecycleNode):
         Periodically predicts EKF state and publishes the tracked object message and TF.
         """
         if not self.enable:
+            return
+        
+        # Waits before it gets the camera frame
+        if self.camera_frame is None:
             return
 
         # Transform point
@@ -311,6 +316,9 @@ class TrackNode(LifecycleNode):
         # If mask is not available, there is no point in tracking
         if not tracker_msg.mask:
             return
+        
+        # Reads camera_frame
+        self.camera_frame = cam_info_msg.header.frame_id
         
         # Convert imgs
         depth_image = self.cv_bridge.imgmsg_to_cv2(depth_msg, desired_encoding="passthrough")

@@ -31,7 +31,6 @@ def generate_launch_description():
     depth_topic_arg = DeclareLaunchArgument('depth_topic', default_value='/camera/camera/depth/image_rect_raw')
     cam_info_arg = DeclareLaunchArgument('cam_info', default_value='/camera/camera/color/camera_info')
     target_frame_arg = DeclareLaunchArgument('target_frame', default_value='camera_link')
-    camera_frame_arg = DeclareLaunchArgument('camera_frame', default_value='camera_color_optical_frame')
     depth_divisor_arg = DeclareLaunchArgument('depth_divisor', default_value='1000')
     
     # Other namespace arguments
@@ -88,7 +87,6 @@ def generate_launch_description():
             'cam_info': LaunchConfiguration('cam_info'),
             'sam2_mask_topic': '/sam2/mask',
             'target_frame': LaunchConfiguration('target_frame'),
-            'camera_frame': LaunchConfiguration('camera_frame'),
             'depth_image_units_divisor': LaunchConfiguration('depth_divisor'),
             'enable': False,
             'min_mask_area': 1000,
@@ -132,7 +130,6 @@ def generate_launch_description():
         depth_topic_arg,
         cam_info_arg,
         target_frame_arg,
-        camera_frame_arg,
         depth_divisor_arg,
         mask2pcl_namespace_arg,
         track_namespace_arg,

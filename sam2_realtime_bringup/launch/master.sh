@@ -6,7 +6,7 @@ set -e
 CAMERA_TYPE="realsense"
 LAUNCH_SAM2="true"
 LAUNCH_MASK2PCL="true" 
-LAUNCH_TRACK_NODE="false"
+LAUNCH_TRACK_NODE="true"
 LAUNCH_YOLO_PROMPT="true"
 
 # Parse arguments
