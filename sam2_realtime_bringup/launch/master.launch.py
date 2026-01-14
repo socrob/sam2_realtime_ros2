@@ -109,7 +109,7 @@ def generate_launch_description():
         parameters=[{
             'image_topic': LaunchConfiguration('image_topic'),
             'yolo_model': 'yolov8n.pt',
-            'detect_class': 'cup',
+            'detect_class': 'pringles',
             'confidence_threshold': 0.4,
             'min_box_area': 800,
             'max_aspect_ratio': 3.0,

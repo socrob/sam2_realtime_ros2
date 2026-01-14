@@ -41,7 +41,7 @@ cd "$SAM2_ASSETS_DIR"
 if [ "$CAMERA_TYPE" == "azure" ]; then
     IMAGE_TOPIC="/k4a/rgb/image_raw"
 elif [ "$CAMERA_TYPE" == "realsense" ]; then
-    IMAGE_TOPIC="/camera/camera/color/image_rect_raw"
+    IMAGE_TOPIC="/camera/camera/color/image_raw"
 elif [ "$CAMERA_TYPE" == "sim_head" ]; then
     IMAGE_TOPIC="/head_front_camera/rgb/image_raw"
 elif [ "$CAMERA_TYPE" == "sim_wrist" ]; then
@@ -53,8 +53,8 @@ fi
 
 # === RUN NODE ===
 echo "🚀 Launching SAM2 node using $CAMERA_TYPE topics..."
-ros2 launch sam2_realtime_bringup sam2_realtime_node.launch.py \
-    namespace:=sam2 \
+ros2 launch sam2_realtime_bringup sam2_realtime_multi_node.launch.py \
+    namespace:=sam2_multi \
     image_topic:=${IMAGE_TOPIC} \
     image_reliability:=2 \
     model_cfg:=configs/sam2.1/sam2.1_hiera_s.yaml \

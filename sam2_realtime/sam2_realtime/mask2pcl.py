@@ -202,9 +202,8 @@ class TrackNode(LifecycleNode):
         tgt_frame = self.target_frame
         if src_frame != tgt_frame:
             try:
-                tf = self.tf_buffer.lookup_transform(
-                    tgt_frame, src_frame, Time.from_msg(stamp), Duration(seconds=0.2)
-                )
+                # tf = self.tf_buffer.lookup_transform(tgt_frame, src_frame, Time.from_msg(stamp), Duration(seconds=0.2))
+                tf = self.tf_buffer.lookup_transform(tgt_frame, src_frame, Time(), Duration(seconds=0.2))
                 points_cam = self.apply_transform_to_points(points_cam, tf)
                 header_frame = tgt_frame
             except TransformException as ex:

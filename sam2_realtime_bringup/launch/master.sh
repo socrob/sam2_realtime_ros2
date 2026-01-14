@@ -3,10 +3,10 @@
 set -e
 
 # Default values
-CAMERA_TYPE="realsense"
+CAMERA_TYPE="azure"
 LAUNCH_SAM2="true"
 LAUNCH_MASK2PCL="true" 
-LAUNCH_TRACK_NODE="true"
+LAUNCH_TRACK_NODE="false"
 LAUNCH_YOLO_PROMPT="true"
 
 # Parse arguments
@@ -54,15 +54,15 @@ case $CAMERA_TYPE in
         IMAGE_TOPIC="/k4a/rgb/image_raw"
         DEPTH_TOPIC="/k4a/depth_to_rgb/image_raw" 
         CAM_INFO="/k4a/rgb/camera_info"
-        TARGET_FRAME="rgb_camera_link"
+        TARGET_FRAME="base_footprint"
         CAMERA_FRAME="rgb_camera_link"
         DEPTH_DIVISOR="1"
         ;;
     realsense)
-        IMAGE_TOPIC="/camera/camera/color/image_raw"
+        IMAGE_TOPIC="/camera/camera/color/image_rect_raw"
         DEPTH_TOPIC="/camera/camera/depth/image_rect_raw"
         CAM_INFO="/camera/camera/color/camera_info"
-        TARGET_FRAME="camera_link"
+        TARGET_FRAME="base_footprint"
         CAMERA_FRAME="camera_color_optical_frame"
         DEPTH_DIVISOR="1000"
         ;;

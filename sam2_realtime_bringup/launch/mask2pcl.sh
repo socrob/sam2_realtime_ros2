@@ -35,13 +35,13 @@ fi
 if [ "$CAMERA_TYPE" == "azure" ]; then
     DEPTH_TOPIC="/k4a/depth_to_rgb/image_raw"
     CAM_INFO="/k4a/rgb/camera_info"
-    TARGET_FRAME="rgb_camera_link"
+    TARGET_FRAME="base_footprint"
     DEPTH_DIVISOR="1" # Azure K4A typically publishes meters already
 elif [ "$CAMERA_TYPE" == "realsense" ]; then
     # Standard RealSense topics
     DEPTH_TOPIC="/camera/camera/depth/image_rect_raw"
     CAM_INFO="/camera/camera/color/camera_info"
-    TARGET_FRAME="camera_color_optical_frame"
+    TARGET_FRAME="base_footprint"
     DEPTH_DIVISOR="1000" # RealSense depth is in millimeters
 elif [ "$CAMERA_TYPE" == "sim_head" ]; then
     DEPTH_TOPIC="/head_front_camera/depth/image_raw"
