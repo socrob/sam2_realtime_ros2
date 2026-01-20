@@ -157,7 +157,7 @@ class SAM2MultiNode(LifecycleNode):
     def on_shutdown(self, state: LifecycleState) -> TransitionCallbackReturn:
         try:
             self.get_logger().info('[sam2_multi_node] Shutting down...')
-            super().on_cleanup(state)
+            super().on_shutdown(state)
             return TransitionCallbackReturn.SUCCESS
         except Exception as e:
             self.get_logger().error(f"[sam2_multi_node] Exception during shutdown: {e}")
