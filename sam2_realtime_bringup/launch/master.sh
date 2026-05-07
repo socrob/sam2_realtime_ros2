@@ -5,9 +5,9 @@ set -e
 # Default values
 CAMERA_TYPE="azure"
 LAUNCH_SAM2="true"
-LAUNCH_MASK2PCL="true" 
-LAUNCH_TRACK_NODE="false"
-LAUNCH_YOLO_PROMPT="true"
+LAUNCH_MASK2PCL="false" 
+LAUNCH_TRACK_NODE="true"
+LAUNCH_YOLO_PROMPT="false"
 
 # Parse arguments
 while [[ "$#" -gt 0 ]]; do
@@ -59,7 +59,7 @@ case $CAMERA_TYPE in
         DEPTH_DIVISOR="1"
         ;;
     realsense)
-        IMAGE_TOPIC="/camera/camera/color/image_rect_raw"
+        IMAGE_TOPIC="/camera/camera/color/image_raw"
         DEPTH_TOPIC="/camera/camera/depth/image_rect_raw"
         CAM_INFO="/camera/camera/color/camera_info"
         TARGET_FRAME="base_footprint"
