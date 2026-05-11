@@ -17,7 +17,7 @@ def generate_launch_description():
         DeclareLaunchArgument('min_mask_area', default_value='1000'),
         DeclareLaunchArgument('predict_rate', default_value='10'),
         DeclareLaunchArgument('print_measurement_marker', default_value='true'),
-        DeclareLaunchArgument('max_depth_jump', default_value='0.3'),
+        DeclareLaunchArgument('max_position_jump', default_value='0.3'),
         DeclareLaunchArgument('relock_window', default_value='1'),
         DeclareLaunchArgument('enable', default_value='false'),
 
@@ -38,7 +38,7 @@ def generate_launch_description():
                 'min_mask_area': LaunchConfiguration('min_mask_area'),
                 'predict_rate': LaunchConfiguration('predict_rate'),
                 'print_measurement_marker': LaunchConfiguration('print_measurement_marker'),
-                'max_depth_jump': LaunchConfiguration('max_depth_jump'),
+                'max_position_jump': LaunchConfiguration('max_position_jump'),
                 'relock_window': LaunchConfiguration('relock_window'),
                 'enable': LaunchConfiguration('enable'),
             }],

@@ -94,7 +94,7 @@ def generate_launch_description():
             'print_measurement_marker': True,
             'depth_filter_percentage': 0.3,
             'maximum_detection_threshold': 0.3,
-            'max_depth_jump': 0.3,
+            'max_position_jump': 0.3,
             'relock_window': 1,
         }],
         condition=IfCondition(LaunchConfiguration('launch_track_node'))

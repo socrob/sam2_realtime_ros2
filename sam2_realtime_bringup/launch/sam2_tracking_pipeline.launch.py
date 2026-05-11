@@ -143,6 +143,18 @@ def generate_launch_description():
         default_value="0.3",
         description="Maximum detection threshold for mask2pcl"
     )
+    
+    fix_height_arg = DeclareLaunchArgument(
+        "fix_height",
+        default_value="false",
+        description="Whether to fix the height of the detected object in the tracker"
+    )
+    
+    fixed_height_arg = DeclareLaunchArgument(
+        "fixed_height",
+        default_value="0.0",
+        description="The fixed height value to use if fix_height is true"
+    )
 
     # -------------------------------------------------------------------------
     # Tracker parameters
@@ -183,10 +195,10 @@ def generate_launch_description():
         description="Maximum detection threshold for tracker"
     )
 
-    max_depth_jump_arg = DeclareLaunchArgument(
-        "max_depth_jump",
+    max_position_jump_arg = DeclareLaunchArgument(
+        "max_position_jump",
         default_value="0.3",
-        description="Maximum accepted depth jump"
+        description="Maximum accepted position jump"
     )
 
     relock_window_arg = DeclareLaunchArgument(
@@ -261,9 +273,11 @@ def generate_launch_description():
             "min_mask_area": LaunchConfiguration("track_min_mask_area"),
             "predict_rate": LaunchConfiguration("predict_rate"),
             "print_measurement_marker": LaunchConfiguration("print_measurement_marker"),
-            "max_depth_jump": LaunchConfiguration("max_depth_jump"),
+            "max_position_jump": LaunchConfiguration("max_position_jump"),
             "relock_window": LaunchConfiguration("relock_window"),
             "enable": LaunchConfiguration("track_enable"),
+            "fix_height": LaunchConfiguration("fix_height"),
+            "fixed_height": LaunchConfiguration("fixed_height"),
         }],
         condition=IfCondition(LaunchConfiguration("launch_track_node"))
     )
@@ -306,8 +320,10 @@ def generate_launch_description():
         print_measurement_marker_arg,
         depth_filter_percentage_arg,
         track_maximum_detection_threshold_arg,
-        max_depth_jump_arg,
+        max_position_jump_arg,
         relock_window_arg,
+        fix_height_arg,
+        fixed_height_arg,
 
         # Nodes
         sam2_node,

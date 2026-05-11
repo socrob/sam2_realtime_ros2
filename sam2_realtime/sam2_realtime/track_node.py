@@ -39,7 +39,7 @@ class TrackNode(LifecycleNode):
     def __init__(self) -> None:
         super().__init__("track_node")
 
-        # Parameters        
+        # Parameters
         self.declare_parameter('depth_topic', '/k4a/depth_to_rgb/image_raw')
         self.declare_parameter('cam_info', '/k4a/rgb/camera_info')
         self.declare_parameter("target_frame", "rgb_camera_link")
@@ -52,9 +52,16 @@ class TrackNode(LifecycleNode):
         self.declare_parameter("depth_info_reliability", QoSReliabilityPolicy.BEST_EFFORT)
         self.declare_parameter("predict_rate", 10)
         self.declare_parameter("print_measurement_marker", True)
-        self.declare_parameter("max_depth_jump", 0.3) #meters
+        self.declare_parameter("max_position_jump", 0.3) #meters
         self.declare_parameter("relock_window", 1) #seconds
         self.declare_parameter("enable", False) #event_in
+
+        self.declare_parameter("sync_queue_size", 10)
+        self.declare_parameter("sync_slop", 0.05)
+        self.declare_parameter("processing_timer_period", 0.001)
+
+        self.declare_parameter("fix_height", False)
+        self.declare_parameter("fixed_height", 1.70)
 
         self.tf_buffer = Buffer()
         self.cv_bridge = CvBridge()
@@ -63,7 +70,7 @@ class TrackNode(LifecycleNode):
 
     def on_configure(self, state: LifecycleState) -> TransitionCallbackReturn:
         self.get_logger().info(f"[{self.get_name()}] Configuring...")
-        
+
         self.depth_topic = self.get_parameter('depth_topic').get_parameter_value().string_value
         self.cam_info = self.get_parameter('cam_info').get_parameter_value().string_value
         self.sam2_mask_topic = self.get_parameter('sam2_mask_topic').get_parameter_value().string_value
@@ -76,11 +83,22 @@ class TrackNode(LifecycleNode):
         dimg_reliability = (self.get_parameter("depth_image_reliability").get_parameter_value().integer_value)
         dinfo_reliability = (self.get_parameter("depth_info_reliability").get_parameter_value().integer_value)
         self.print_measurement_marker = (self.get_parameter("print_measurement_marker").get_parameter_value().bool_value)
-        self.max_depth_jump = (self.get_parameter("max_depth_jump").get_parameter_value().double_value)
+        self.max_position_jump = (self.get_parameter("max_position_jump").get_parameter_value().double_value)
         self.relock_window = (self.get_parameter("relock_window").get_parameter_value().integer_value)
         self.enable = (self.get_parameter("enable").get_parameter_value().bool_value)
         self.camera_frame = None
-        
+
+        self.sync_queue_size = self.get_parameter("sync_queue_size").get_parameter_value().integer_value
+        self.sync_slop = self.get_parameter("sync_slop").get_parameter_value().double_value
+        self.processing_timer_period = self.get_parameter("processing_timer_period").get_parameter_value().double_value
+
+        self.fix_height = self.get_parameter("fix_height").get_parameter_value().bool_value
+        self.fixed_height = self.get_parameter("fixed_height").get_parameter_value().double_value
+
+        self.camera_frame = None
+        self.cam_info_msg = None
+        self.latest_packet = None
+        self.processing_measurement = False
 
         self.depth_image_qos_profile = QoSProfile(
             reliability=dimg_reliability,
@@ -119,37 +137,50 @@ class TrackNode(LifecycleNode):
 
         #### EKF Params
         self.initial_state = [0, 0, 1.5, 0, 0, 0]
-        
+
         # Define process noise covariance (Q)
         # Initial state [x, y, z, vx, vy, vz]
-        self.initial_state = np.zeros(6)  # [0, 0, 0, 0, 0, 0]
-        
+        self.initial_state = np.zeros(6)
+        if self.fix_height:
+            self.initial_state[2] = self.fixed_height
+
         # Define process noise covariance (Q)
-        self.process_noise_cov = np.diag([1e-2, 1e-2, 1e-2, 1e-3, 1e-3, 1e-3])
-
-        # Azure Kinect depth standard deviation: 5mm = 0.005 meters
-        depth_std_dev = 0.005
-        measurement_variance = depth_std_dev ** 2
-
-        # Define measurement noise covariance (R) for 3D measurements
-        self.measurement_noise_cov = np.eye(3) * measurement_variance  # 3D position measurement noise
+        # self.process_noise_cov = np.diag([1e-2, 1e-2, 1e-2, 1e-3, 1e-3, 1e-3])
+        self.process_noise_cov = np.diag([
+            5e-4, 5e-4, 1e-5,
+            1e-4, 1e-4, 1e-6,
+        ])
 
         # Initial covariance matrix for state estimation
         self.initial_covariance = np.diag([0.5, 0.5, 0.5, 1.0, 1.0, 1.0])
-        # self.initial_covariance = np.eye(6) * 1e-1  # Initial uncertainty in the state
+
+        # Azure Kinect depth standard deviation: 5mm = 0.005 meters
+        # depth_std_dev = 0.005
+        # measurement_variance = depth_std_dev ** 2
+
+        # Define measurement noise covariance (R) for 3D measurements
+        # self.measurement_noise_cov = np.eye(3) * measurement_variance  # 3D position measurement noise
+
+        measurement_std_dev = 0.12
+        measurement_variance = measurement_std_dev ** 2
+        self.measurement_noise_cov = np.eye(3) * measurement_variance
+
+        if self.fix_height:
+            self.measurement_noise_cov[2, 2] = 1.0
 
         # Initialize EKF
         self.ekf = EKF(process_noise_cov=self.process_noise_cov,
                         initial_state=self.initial_state,
                         initial_covariance=self.initial_covariance,
                         dt=1.0/self.rate)
-        
+
         # Debug marker counter
         self.marker_id = 0
 
         # Time gated outlier rejection params
         self.last_update_time = self.get_clock().now()
-        
+        self.has_measurement = False
+
         super().on_configure(state)
         self.get_logger().info(f"[{self.get_name()}] Configured")
 
@@ -158,54 +189,105 @@ class TrackNode(LifecycleNode):
     def on_activate(self, state: LifecycleState) -> TransitionCallbackReturn:
         self.get_logger().info(f"[{self.get_name()}] Activating...")
 
-        # Subscribers
+        self.cam_info_msg = None
+        self.latest_packet = None
+        self.processing_measurement = False
+        self.has_measurement = False
+
+        # Subscribe once to CameraInfo.
+        self.cam_info_sub = self.create_subscription(
+            CameraInfo,
+            self.cam_info,
+            self.cam_info_cb,
+            self.depth_info_qos_profile,
+        )
+
+        # Synchronize only the frame-varying streams.
         self.depth_sub = message_filters.Subscriber(
-            self, Image, self.depth_topic, qos_profile=self.depth_image_qos_profile
+            self,
+            Image,
+            self.depth_topic,
+            qos_profile=self.depth_image_qos_profile,
         )
-        self.cam_info_sub = message_filters.Subscriber(
-            self, CameraInfo, self.cam_info, qos_profile=self.depth_info_qos_profile
-        )
+
         self.detections_sub = message_filters.Subscriber(
-            self, TrackedObject, self.sam2_mask_topic
+            self,
+            TrackedObject,
+            self.sam2_mask_topic,
         )
 
         self._synchronizer = message_filters.ApproximateTimeSynchronizer(
-            (self.depth_sub, self.cam_info_sub, self.detections_sub), 10, 0.05
+            (self.depth_sub, self.detections_sub),
+            self.sync_queue_size,
+            self.sync_slop,
         )
-        # self._synchronizer = message_filters.TimeSynchronizer(
-        #     (self.depth_sub, self.cam_info_sub, self.detections_sub), 10
-        # )
-        self._synchronizer.registerCallback(self.process_detections)
+        self._synchronizer.registerCallback(self.synced_measurement_cb)
 
-        self._event_sub = self.create_subscription(String, "event_in", self.event_callback, 10)
+        self._event_sub = self.create_subscription(
+            String,
+            "event_in",
+            self.event_callback,
+            10,
+        )
 
-        self.timer = self.create_timer(1.0 / self.rate, self.run)
+        # Processes latest depth+mask measurement outside the sync callback.
+        self.measurement_timer = self.create_timer(
+            self.processing_timer_period,
+            self.process_latest_measurement,
+        )
+
+        # Existing EKF prediction/publishing timer.
+        self.timer = self.create_timer(
+            1.0 / self.rate,
+            self.run,
+        )
 
         super().on_activate(state)
         self.get_logger().info(f"[{self.get_name()}] Activated")
 
         return TransitionCallbackReturn.SUCCESS
 
-    def on_deactivate(self, state: LifecycleState) -> TransitionCallbackReturn: 
+
+    def on_deactivate(self, state: LifecycleState) -> TransitionCallbackReturn:
         self.get_logger().info(f"[{self.get_name()}] Deactivating...")
-        
+
         self.camera_frame = None
+        self.cam_info_msg = None
+        self.latest_packet = None
+        self.processing_measurement = False
 
-        self.destroy_subscription(self.depth_sub.sub)
-        self.destroy_subscription(self.cam_info_sub.sub)
-        self.destroy_subscription(self.detections_sub.sub)
-        self.destroy_subscription(self._event_sub)
+        if hasattr(self, "timer") and self.timer is not None:
+            self.destroy_timer(self.timer)
+            self.timer = None
 
-        del self._synchronizer
-        
-        if hasattr(self, 'timer'):
-            self.timer.cancel()
-            del self.timer
+        if hasattr(self, "measurement_timer") and self.measurement_timer is not None:
+            self.destroy_timer(self.measurement_timer)
+            self.measurement_timer = None
+
+        if hasattr(self, "depth_sub") and self.depth_sub is not None:
+            self.destroy_subscription(self.depth_sub.sub)
+            self.depth_sub = None
+
+        if hasattr(self, "detections_sub") and self.detections_sub is not None:
+            self.destroy_subscription(self.detections_sub.sub)
+            self.detections_sub = None
+
+        if hasattr(self, "cam_info_sub") and self.cam_info_sub is not None:
+            self.destroy_subscription(self.cam_info_sub)
+            self.cam_info_sub = None
+
+        if hasattr(self, "_event_sub") and self._event_sub is not None:
+            self.destroy_subscription(self._event_sub)
+            self._event_sub = None
+
+        if hasattr(self, "_synchronizer"):
+            del self._synchronizer
 
         super().on_deactivate(state)
         self.get_logger().info(f"[{self.get_name()}] Deactivated")
 
         return TransitionCallbackReturn.SUCCESS
+
 
     def on_cleanup(self, state: LifecycleState) -> TransitionCallbackReturn:
         self.get_logger().info(f"[{self.get_name()}] Cleaning up...")
@@ -227,42 +309,85 @@ class TrackNode(LifecycleNode):
         super().on_shutdown(state)
         self.get_logger().info(f"[{self.get_name()}] Shutted down")
         return TransitionCallbackReturn.SUCCESS
-    
+
+
+    def cam_info_cb(self, msg: CameraInfo) -> None:
+        """
+        Store CameraInfo once and unsubscribe.
+
+        CameraInfo is static for a fixed camera configuration, so it does not need
+        to be synchronized every frame.
+        """
+        self.cam_info_msg = msg
+        self.camera_frame = msg.header.frame_id
+
+        self.get_logger().info(
+            f"[track_node] Received CameraInfo from frame '{msg.header.frame_id}'. "
+            "Unsubscribing from cam_info."
+        )
+
+        if hasattr(self, "cam_info_sub") and self.cam_info_sub is not None:
+            self.destroy_subscription(self.cam_info_sub)
+            self.cam_info_sub = None
+
+
+    def synced_measurement_cb(
+        self,
+        depth_msg: Image,
+        tracker_msg: TrackedObject,
+    ) -> None:
+        """
+        Store the latest synchronized depth + SAM2 mask packet.
+
+        Heavy measurement extraction and EKF update happen in process_latest_measurement().
+        """
+        if not self.enable:
+            return
+
+        self.latest_packet = (depth_msg, tracker_msg)
+
+
+    def reset_ekf_state(self, position: np.ndarray) -> None:
+        self.initial_state = np.zeros(6)
+        self.initial_state[0] = float(position[0])
+        self.initial_state[1] = float(position[1])
+        self.initial_state[2] = float(position[2])
+
+        self.ekf = EKF(
+            process_noise_cov=self.process_noise_cov,
+            initial_state=self.initial_state,
+            initial_covariance=self.initial_covariance,
+            dt=1.0 / self.rate,
+        )
 
     def run(self) -> None:
         """
         Periodically predicts EKF state and publishes the tracked object message and TF.
+
+        The EKF state is already expressed in target_frame, because measurements are
+        transformed into target_frame before EKF update.
         """
         if not self.enable:
             return
-        
-        # Waits before it gets the camera frame
-        if self.camera_frame is None:
+
+        # Wait until we have received at least one valid measurement.
+        if self.camera_frame is None or not self.has_measurement:
             return
 
-        # Transform point
-        transform = self.tf_buffer.lookup_transform(self.target_frame, self.camera_frame, rclpy.time.Time())
-        if transform is None:
-            self.get_logger().warn(f"[track_node] Could get transform from {self.camera_frame}")
-            return
-        
-        # Get EKF state, i.e. current position
         self.position = tuple(self.ekf.get_state()[:3])
 
-        # Ignoring height before transformation. In the camera frame (Azure) matches y=0
-        #TODO
-        # self.position_no_height = (self.position[0], 0.0, self.position[2])
-        self.position_no_height = (self.position[0], self.position[1], self.position[2])
-        
-        # Apply transform to point
-        self.transformed_position = self.transform_point_ros2(self.position_no_height, transform)
-        
-        # Publish msg and TF
-        self.publishMessage()
+        if self.fix_height:
+            self.position = (
+                self.position[0],
+                self.position[1],
+                self.fixed_height,
+            )
 
-        # Predict
+        self.transformed_position = self.position
+
+        self.publishMessage()
         self.ekf.predict()
-    
+
 
     def publishMessage(self) -> None:
         tracker_msg = TrackedObject()
@@ -270,7 +395,7 @@ class TrackNode(LifecycleNode):
         tracker_msg.header.stamp = now
         tracker_msg.header.frame_id = self.target_frame
         tracker_msg.id = 1
-        
+
         tracker_msg.mask.header.stamp = now
         tracker_msg.mask.header.frame_id = self.target_frame
 
@@ -297,69 +422,103 @@ class TrackNode(LifecycleNode):
 
         self._point_pub.publish(point_msg)
 
-   
-    def process_detections(self, depth_msg: Image, cam_info_msg: CameraInfo, tracker_msg: TrackedObject) -> None:
+
+    def process_latest_measurement(self) -> None:
+        """
+        Processes the latest SAM2 mask and depth data to estimate the 3D position
+        of the tracked object, then updates the EKF.
+
+        This runs outside the message_filters callback.
+        """
+        if self.processing_measurement:
+            return
+
+        if not self.enable:
+            self.latest_packet = None
+            return
+
+        if self.latest_packet is None:
+            return
+
+        if self.cam_info_msg is None:
+            self.get_logger().warn(
+                "[track_node] Waiting for CameraInfo before processing measurements.",
+                throttle_duration_sec=2.0,
+            )
+            return
+
+        depth_msg, tracker_msg = self.latest_packet
+        self.latest_packet = None
+
+        self.processing_measurement = True
+
+        try:
+            self.process_detections(depth_msg, self.cam_info_msg, tracker_msg)
+
+        except Exception as e:
+            self.get_logger().error(f"[track_node] Measurement processing failed: {e}")
+
+        finally:
+            self.processing_measurement = False
+
+
+    def process_detections(
+        self,
+        depth_msg: Image,
+        cam_info_msg: CameraInfo,
+        tracker_msg: TrackedObject,
+    ) -> None:
         """
         Processes SAM2 mask and depth data to estimate 3D position of the tracked object.
 
-        Args:
-            depth_msg (Image): Depth image.
-            cam_info_msg (CameraInfo): Camera intrinsic matrix info.
-            tracker_msg (TrackedObject): Output message to populate.
-
-        Returns:
-            TrackedObject: Updated message with 3D position filled in.
+        The raw measurement is first computed in the camera frame, then transformed
+        into target_frame. The EKF is updated in target_frame.
         """
         if not self.enable:
             return
 
-        # If mask is not available, there is no point in tracking
+        # If mask is not available, there is no point in tracking.
         if not tracker_msg.mask:
             return
-        
+
         # Reads camera_frame
         self.camera_frame = cam_info_msg.header.frame_id
-        
-        # Convert imgs
-        depth_image = self.cv_bridge.imgmsg_to_cv2(depth_msg, desired_encoding="passthrough")
-        mask = self.cv_bridge.imgmsg_to_cv2(tracker_msg.mask, desired_encoding="mono8")
 
-        # Check mask size (ignore if mask is too small)
+        # Convert imgs
+        depth_image = self.cv_bridge.imgmsg_to_cv2(
+            depth_msg,
+            desired_encoding="passthrough",
+        )
+        mask = self.cv_bridge.imgmsg_to_cv2(
+            tracker_msg.mask,
+            desired_encoding="mono8",
+        )
+
+        # Check mask size, ignore if mask is too small.
         num_pixels = cv2.countNonZero(mask)
         if num_pixels < self.min_mask_area:
-            self.get_logger().warn(f"[track_node] Mask too small ({num_pixels} pixels) — ignoring this measurement.")
+            self.get_logger().warn(
+                f"[track_node] Mask too small ({num_pixels} pixels) — ignoring this measurement."
+            )
             return
 
-        # Try using centroid of the mask first
+        # Try using centroid of the mask first.
         cx, cy = self.get_centroid_of_mask(mask)
         if cx == -1 or cy == -1 or mask[int(cy), int(cx)] != 255:
             cx, cy = self.get_furthest_point_from_mask_edge(mask)
             if cx == -1 or cy == -1:
                 self.get_logger().warn('[track_node] Could not compute a valid point in the mask')
                 return
-            
-        # Estimate depth of a square centered in cx, cy
-        # depth = self.get_median_depth(int(cy), int(cx), depth_image, mask)
+
+        # Estimate depth from the masked object.
         depth = self.get_median_depth_2(depth_image, mask)
-        
+
         if depth <= 0:
             return
-        
-        # Apply time-gated outlier rejection
+
         now = self.get_clock().now()
-        _, _, predicted_z = self.ekf.get_state()[:3]
 
-        dz = abs(predicted_z - depth)
-        time_since_last = (now - self.last_update_time).nanoseconds * 1e-9  # seconds
-
-        if dz > self.max_depth_jump:
-            if time_since_last < self.relock_window:
-                self.get_logger().warn(f"[track_node] Rejecting large jump dz={dz:.2f} (only {time_since_last:.2f}s since last valid update)")
-                return
-            else:
-                self.get_logger().info(f"[track_node] Large jump dz={dz:.2f} but {time_since_last:.2f}s passed — re-locking!")
-
-        # Convert depth image coordinates to 3D camera space
+        # Convert depth image coordinates to 3D camera space.
         k = cam_info_msg.k
         fx, fy, px, py = k[0], k[4], k[2], k[5]
 
@@ -367,26 +526,93 @@ class TrackNode(LifecycleNode):
         x = (int(cx) - px) * z / fx
         y = (int(cy) - py) * z / fy
 
-        #TODO
+        measurement_camera = (float(x), float(y), float(z))
+
+        # Transform camera-frame measurement into target_frame.
+        try:
+            transform = self.tf_buffer.lookup_transform(
+                self.target_frame,
+                self.camera_frame,
+                rclpy.time.Time(),
+            )
+        except Exception as e:
+            self.get_logger().warn(
+                f"[track_node] Could not transform measurement from {self.camera_frame} "
+                f"to {self.target_frame}: {e}",
+                throttle_duration_sec=2.0,
+            )
+            return
+
+        measurement_target = self.transform_point_ros2(
+            measurement_camera,
+            transform,
+        )
+        measurement_target = list(measurement_target)
+
+        # For person/ground-plane tracking, fix target-frame height.
+        if self.fix_height:
+            measurement_target[2] = self.fixed_height
+
+        # Time-gated outlier rejection in target_frame.
+        if self.has_measurement:
+            predicted = self.ekf.get_state()[:3]
+
+            dxy = np.linalg.norm(
+                np.array(predicted[:2], dtype=np.float64)
+                - np.array(measurement_target[:2], dtype=np.float64)
+            )
+
+            time_since_last = (now - self.last_update_time).nanoseconds * 1e-9
+
+            if dxy > self.max_position_jump:
+                if time_since_last < self.relock_window:
+                    self.get_logger().warn(
+                        f"[track_node] Rejecting large XY jump dxy={dxy:.2f} "
+                        f"(only {time_since_last:.2f}s since last valid update)"
+                    )
+                    return
+                else:
+                    self.get_logger().info(
+                        f"[track_node] Large XY jump dxy={dxy:.2f} but "
+                        f"{time_since_last:.2f}s passed — re-locking!"
+                    )
+
         if self.print_measurement_marker:
-            # self.debug_marker(x=float(x), y=0.0, z=float(z))
-            self.debug_marker(x=float(x), y=float(y), z=float(z))
+            self.debug_marker(
+                x=float(measurement_target[0]),
+                y=float(measurement_target[1]),
+                z=float(measurement_target[2]),
+                frame_id=self.target_frame,
+            )
 
-        # Update EKF after measurement
-        self.ekf.update([x, y, z], dynamic_R=self.measurement_noise_cov)
+        # Update EKF in target_frame.
+        measurement_np = np.array(
+            [
+                float(measurement_target[0]),
+                float(measurement_target[1]),
+                float(measurement_target[2]),
+            ],
+            dtype=np.float64,
+        )
 
+        if not self.has_measurement:
+            self.reset_ekf_state(measurement_np)
+        else:
+            self.ekf.update(
+                measurement_np.tolist(),
+                dynamic_R=self.measurement_noise_cov,
+            )
+
+        self.has_measurement = True
         self.centroid = (float(cx), float(cy))
-
         self.last_update_time = now
 
-        return
-    
 
-    def debug_marker(self, x: float, y: float, z:float):
+    def debug_marker(self, x: float, y: float, z: float, frame_id: Optional[str] = None):
         # --- Debug marker for measurement ---
         marker = Marker()
         marker.header.stamp = self.get_clock().now().to_msg()
-        marker.header.frame_id = self.camera_frame
+        marker.header.frame_id = frame_id or self.camera_frame
 
         marker.ns = "measurement"
         marker.id = self.marker_id
@@ -414,7 +640,7 @@ class TrackNode(LifecycleNode):
 
         self._meas_marker_pub.publish(marker)
 
-    
+
 
     def publish_tf_from_tracked_object(self, tracker_msg: TrackedObject):
         """
@@ -439,7 +665,7 @@ class TrackNode(LifecycleNode):
         t.transform.rotation.w = 1.0
 
         self.tf_broadcaster.sendTransform(t)
-    
+
 
     def get_median_depth(self, cy: int, cx: int, depth_image: np.ndarray, mask: Optional[np.ndarray]) -> float:
         """
@@ -480,7 +706,7 @@ class TrackNode(LifecycleNode):
             median = float(median/self.depth_image_units_divisor)
             return 0.0 if np.isnan(median) else median
         return 0.0
-    
+
 
     def get_median_depth_2(self, depth_image: np.ndarray, mask: Optional[np.ndarray]) -> float:
         """
@@ -496,12 +722,12 @@ class TrackNode(LifecycleNode):
         roi = roi / self.depth_image_units_divisor
         if not np.any(roi):
             return 0.0
-        
+
         # Compute the median Z value of the object from the mask
         roi = roi[roi > 0]
         bb_center_z_coord = np.median(roi)
 
-        # This computes the absolute difference between each depth value in the ROI and the estimated center Z value of the bounding box 
+        # This computes the absolute difference between each depth value in the ROI and the estimated center Z value of the bounding box
         # (matrix of how far each point in ROI is from the center depth, in meters)
         z_diff = np.abs(roi - bb_center_z_coord)
         # A binary mask that selects only the pixels in ROI where the depth is within a small threshold of the center depth.
@@ -582,7 +808,7 @@ class TrackNode(LifecycleNode):
         cy, cx = np.where(distance_transform == distance_transform.max())
 
         return int(cx[0]), int(cy[0])
-    
+
 
 
     def transform_point_ros2(self, point: Tuple, transform: TransformStamped) -> Tuple:
@@ -597,13 +823,17 @@ class TrackNode(LifecycleNode):
         transformed_ps = do_transform_point(ps, transform)
 
         return (transformed_ps.point.x, transformed_ps.point.y, transformed_ps.point.z)
-    
+
     def event_callback(self, msg: String):
         if msg.data == "e_stop":
             self.enable = False
             self.get_logger().info("[track_node] Received e_stop → pausing tracking.")
         elif msg.data == "e_start":
             self.enable = True
+            self.has_measurement = False
+            self.latest_packet = None
+            self.centroid = (0.0, 0.0)
+            self.last_update_time = self.get_clock().now()
             self.get_logger().info("[track_node] Received e_start → resuming tracking.")
         else:
             self.get_logger().warn(f"[track_node] Unknown event: '{msg.data}'")

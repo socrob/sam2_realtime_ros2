@@ -20,7 +20,7 @@ set -e
 CAMERA_TYPE="azure"
 
 LAUNCH_SAM2="true"
-LAUNCH_MASK2PCL="false"
+LAUNCH_MASK2PCL="true"
 LAUNCH_TRACK_NODE="true"
 
 # ------------------------------------------------------------------------------
@@ -63,8 +63,10 @@ PREDICT_RATE="10"
 PRINT_MEASUREMENT_MARKER="true"
 DEPTH_FILTER_PERCENTAGE="0.3"
 TRACK_MAXIMUM_DETECTION_THRESHOLD="0.3"
-MAX_DEPTH_JUMP="0.3"
+MAX_POSITION_JUMP="0.3"
 RELOCK_WINDOW="1"
+FIX_HEIGHT="false"
+FIXED_HEIGHT="1.70"
 
 # ------------------------------------------------------------------------------
 # Environment defaults
@@ -163,8 +165,8 @@ show_help() {
     echo "  --depth-filter-percentage VALUE"
     echo "      Default: $DEPTH_FILTER_PERCENTAGE"
     echo ""
-    echo "  --max-depth-jump VALUE"
-    echo "      Default: $MAX_DEPTH_JUMP"
+    echo "  --max-position-jump VALUE"
+    echo "      Default: $MAX_POSITION_JUMP"
     echo ""
     echo "  --relock-window VALUE"
     echo "      Default: $RELOCK_WINDOW"
@@ -324,8 +326,8 @@ while [[ "$#" -gt 0 ]]; do
             shift 2
             ;;
 
-        --max-depth-jump)
-            MAX_DEPTH_JUMP="$2"
+        --max-position-jump)
+            MAX_POSITION_JUMP="$2"
             shift 2
             ;;
 
@@ -459,7 +461,7 @@ echo "  Predict rate:                 $PREDICT_RATE"
 echo "  Print measurement marker:     $PRINT_MEASUREMENT_MARKER"
 echo "  Depth filter percentage:      $DEPTH_FILTER_PERCENTAGE"
 echo "  Max detection threshold:      $TRACK_MAXIMUM_DETECTION_THRESHOLD"
-echo "  Max depth jump:               $MAX_DEPTH_JUMP"
+echo "  Max position jump:            $MAX_POSITION_JUMP"
 echo "  Relock window:                $RELOCK_WINDOW"
 echo "============================================================"
 
@@ -493,5 +495,7 @@ ros2 launch sam2_realtime_bringup sam2_tracking_pipeline.launch.py \
     print_measurement_marker:="$PRINT_MEASUREMENT_MARKER" \
     depth_filter_percentage:="$DEPTH_FILTER_PERCENTAGE" \
     track_maximum_detection_threshold:="$TRACK_MAXIMUM_DETECTION_THRESHOLD" \
-    max_depth_jump:="$MAX_DEPTH_JUMP" \
-    relock_window:="$RELOCK_WINDOW"
+    max_position_jump:="$MAX_POSITION_JUMP" \
+    relock_window:="$RELOCK_WINDOW" \
+    fix_height:="$FIX_HEIGHT" \
+    fixed_height:="$FIXED_HEIGHT"
