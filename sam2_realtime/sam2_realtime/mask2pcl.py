@@ -29,7 +29,7 @@ from shapely.algorithms.polylabel import polylabel
 from sam2_realtime_msgs.msg import TrackedObject
 
 
-class TrackNode(LifecycleNode):
+class Mask2Pcl(LifecycleNode):
 
     def __init__(self) -> None:
         super().__init__("mask2pcl")
@@ -664,7 +664,7 @@ class TrackNode(LifecycleNode):
 
 def main():
     rclpy.init()
-    node = TrackNode()
+    node = Mask2Pcl()
     node.trigger_configure()
     node.trigger_activate()
     rclpy.spin(node)
