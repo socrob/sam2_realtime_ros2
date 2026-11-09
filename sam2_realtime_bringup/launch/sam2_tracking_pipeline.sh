@@ -20,7 +20,7 @@ set -e
 CAMERA_TYPE="azure"
 
 LAUNCH_SAM2="true"
-LAUNCH_MASK2PCL="true"
+LAUNCH_MASK2PCL="false"
 LAUNCH_TRACK_NODE="true"
 
 # ------------------------------------------------------------------------------
@@ -43,8 +43,8 @@ LIVE_VISUALIZATION="True"
 # ------------------------------------------------------------------------------
 # Empty by default so it can be selected from the camera profile.
 # The user can override it with --target-frame.
-TARGET_FRAME=""
-TARGET_FRAME_USER_SET="false"
+TARGET_FRAME="map"
+TARGET_FRAME_USER_SET="true"
 
 # ------------------------------------------------------------------------------
 # Default Mask2PCL parameters
@@ -65,8 +65,8 @@ DEPTH_FILTER_PERCENTAGE="0.3"
 TRACK_MAXIMUM_DETECTION_THRESHOLD="0.3"
 MAX_POSITION_JUMP="0.3"
 RELOCK_WINDOW="1"
-FIX_HEIGHT="false"
-FIXED_HEIGHT="1.70"
+FIX_HEIGHT="true"
+FIXED_HEIGHT="1.20"
 
 # ------------------------------------------------------------------------------
 # Environment defaults

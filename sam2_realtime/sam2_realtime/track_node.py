@@ -62,6 +62,16 @@ class TrackNode(LifecycleNode):
 
         self.declare_parameter("fix_height", False)
         self.declare_parameter("fixed_height", 1.70)
+        
+        self.declare_parameter("lost_timeout", 0.4)
+        self.declare_parameter("lost_velocity_damping", 0.2)
+        self.declare_parameter("stop_timeout", 1.0)
+        self.declare_parameter("max_velocity", 0.5)
+        
+        # lost_timeout = after 0.5 s without measurement, start damping velocity
+        # lost_velocity_damping = multiply velocity by 0.3 each prediction cycle
+        # stop_timeout = after 1.5 s without measurement, force velocity to zero
+        # max_velocity = clamp estimated person velocity to 0.6 m/s
 
         self.tf_buffer = Buffer()
         self.cv_bridge = CvBridge()
@@ -94,6 +104,30 @@ class TrackNode(LifecycleNode):
 
         self.fix_height = self.get_parameter("fix_height").get_parameter_value().bool_value
         self.fixed_height = self.get_parameter("fixed_height").get_parameter_value().double_value
+        
+        self.lost_timeout = (
+            self.get_parameter("lost_timeout")
+            .get_parameter_value()
+            .double_value
+        )
+
+        self.lost_velocity_damping = (
+            self.get_parameter("lost_velocity_damping")
+            .get_parameter_value()
+            .double_value
+        )
+
+        self.stop_timeout = (
+            self.get_parameter("stop_timeout")
+            .get_parameter_value()
+            .double_value
+        )
+
+        self.max_velocity = (
+            self.get_parameter("max_velocity")
+            .get_parameter_value()
+            .double_value
+        )
 
         self.camera_frame = None
         self.cam_info_msg = None
@@ -364,15 +398,31 @@ class TrackNode(LifecycleNode):
         """
         Periodically predicts EKF state and publishes the tracked object message and TF.
 
-        The EKF state is already expressed in target_frame, because measurements are
-        transformed into target_frame before EKF update.
+        The EKF state is expressed in target_frame because measurements are transformed
+        into target_frame before EKF update.
+
+        If SAM2 loses the person, we progressively damp the EKF velocity so the
+        predicted TF does not continue drifting too far.
         """
         if not self.enable:
             return
 
-        # Wait until we have received at least one valid measurement.
         if self.camera_frame is None or not self.has_measurement:
             return
+
+        now = self.get_clock().now()
+        time_since_last = (now - self.last_update_time).nanoseconds * 1e-9
+
+        # If no measurement has arrived recently, slow down the constant-velocity model.
+        if time_since_last > self.lost_timeout:
+            self.ekf.damp_velocity(self.lost_velocity_damping)
+
+        # If the person has been lost for longer, stop prediction drift completely.
+        if time_since_last > self.stop_timeout:
+            self.ekf.zero_velocity()
+
+        # Safety clamp, useful even when measurements are noisy.
+        self.ekf.clamp_velocity(self.max_velocity)
 
         self.position = tuple(self.ekf.get_state()[:3])
 
@@ -386,6 +436,7 @@ class TrackNode(LifecycleNode):
         self.transformed_position = self.position
 
         self.publishMessage()
+
         self.ekf.predict()
 
 
@@ -598,10 +649,8 @@ class TrackNode(LifecycleNode):
         if not self.has_measurement:
             self.reset_ekf_state(measurement_np)
         else:
-            self.ekf.update(
-                measurement_np.tolist(),
-                dynamic_R=self.measurement_noise_cov,
-            )
+            self.ekf.update(measurement_np.tolist(), dynamic_R=self.measurement_noise_cov)
+            self.ekf.clamp_velocity(self.max_velocity)
 
         self.has_measurement = True
         self.centroid = (float(cx), float(cy))
@@ -827,6 +876,11 @@ class TrackNode(LifecycleNode):
     def event_callback(self, msg: String):
         if msg.data == "e_stop":
             self.enable = False
+            self.latest_packet = None
+
+            if self.ekf is not None:
+                self.ekf.zero_velocity()
+
             self.get_logger().info("[track_node] Received e_stop → pausing tracking.")
         elif msg.data == "e_start":
             self.enable = True
