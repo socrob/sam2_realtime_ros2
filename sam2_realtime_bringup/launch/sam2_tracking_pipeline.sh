@@ -73,10 +73,10 @@ FIXED_HEIGHT="1.20"
 # ------------------------------------------------------------------------------
 SAM2_VENV_PATH="$HOME/venvs/sam2_realtime_venv/bin/activate"
 
-# Optional.
-# If this variable is defined, the script will cd into it before launching SAM2.
-# This is useful if Hydra/checkpoint paths are relative to a specific directory.
-SAM2_ASSETS_DIR="${SAM2_ASSETS_DIR:-}"
+# SAM2 assets (checkpoints/) live in ~/sam2_assets unless SAM2_ASSETS_DIR
+# overrides it. The script cds into this folder, so relative checkpoint
+# paths such as checkpoints/sam2.1_hiera_small.pt resolve there.
+SAM2_ASSETS_DIR="${SAM2_ASSETS_DIR:-$HOME/sam2_assets}"
 
 # ------------------------------------------------------------------------------
 # Help
@@ -175,6 +175,10 @@ show_help() {
     echo "  --venv PATH"
     echo "      Path to SAM2 virtual environment activate script"
     echo "      Default: $SAM2_VENV_PATH"
+    echo ""
+    echo "  SAM2_ASSETS_DIR (environment variable)"
+    echo "      Folder holding checkpoints/; relative checkpoint paths resolve there"
+    echo "      Default: \$HOME/sam2_assets"
     echo ""
     echo "Examples:"
     echo "  $0"
@@ -402,14 +406,24 @@ else
     echo "  $SAM2_VENV_PATH"
 fi
 
-if [ "$LAUNCH_SAM2" == "true" ] && [ -n "$SAM2_ASSETS_DIR" ]; then
-    if [ -d "$SAM2_ASSETS_DIR" ]; then
-        echo "Changing directory to SAM2 assets:"
+if [ "$LAUNCH_SAM2" == "true" ]; then
+    if [ ! -d "$SAM2_ASSETS_DIR" ]; then
+        echo "Error: SAM2 assets folder not found:"
         echo "  $SAM2_ASSETS_DIR"
-        cd "$SAM2_ASSETS_DIR"
-    else
-        echo "Warning: SAM2_ASSETS_DIR is set but does not exist:"
-        echo "  $SAM2_ASSETS_DIR"
+        echo "Run setup_env.sh from the sam2_realtime_ros2 repository to download the checkpoints,"
+        echo "or set SAM2_ASSETS_DIR to the folder that holds checkpoints/."
+        exit 1
+    fi
+
+    echo "Changing directory to SAM2 assets:"
+    echo "  $SAM2_ASSETS_DIR"
+    cd "$SAM2_ASSETS_DIR"
+
+    if [ ! -f "$CHECKPOINT" ]; then
+        echo "Error: SAM2 checkpoint not found:"
+        echo "  $CHECKPOINT (in $SAM2_ASSETS_DIR)"
+        echo "Run setup_env.sh from the sam2_realtime_ros2 repository to download it."
+        exit 1
     fi
 fi
 

@@ -38,10 +38,8 @@ else
   echo "❌ Virtual environment not found at $VENV_PATH"; exit 1
 fi
 
-# YOLO assets dir check (ultralytics loads from a path you provide)
-if [ -z "$YOLO_ASSETS_DIR" ]; then
-  echo "❌ YOLO_ASSETS_DIR environment variable not set (should point to directory containing $YOLO_MODEL)"; exit 1
-fi
+# YOLO weights are looked up in ~/yolo_ros/models unless YOLO_ASSETS_DIR overrides it
+export YOLO_ASSETS_DIR="${YOLO_ASSETS_DIR:-$HOME/yolo_ros/models}"
 
 # Choose image topic if not provided
 if [ -z "$IMAGE_TOPIC" ]; then

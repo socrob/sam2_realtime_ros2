@@ -97,7 +97,16 @@ else
     echo "Warning: SAM2 virtual environment not found"
 fi
 
-if [ "$LAUNCH_SAM2" == "true" ] && [ -n "$SAM2_ASSETS_DIR" ]; then
+# SAM2 assets (checkpoints/) live in ~/sam2_assets unless SAM2_ASSETS_DIR overrides it
+SAM2_ASSETS_DIR="${SAM2_ASSETS_DIR:-$HOME/sam2_assets}"
+
+if [ "$LAUNCH_SAM2" == "true" ]; then
+    if [ ! -f "$SAM2_ASSETS_DIR/checkpoints/sam2.1_hiera_small.pt" ]; then
+        echo "Error: SAM2 checkpoint not found: $SAM2_ASSETS_DIR/checkpoints/sam2.1_hiera_small.pt"
+        echo "Run setup_env.sh from the sam2_realtime_ros2 repository, or set SAM2_ASSETS_DIR."
+        exit 1
+    fi
+
     echo "Changing directory to SAM2 assets: $SAM2_ASSETS_DIR"
     cd "$SAM2_ASSETS_DIR"
 fi

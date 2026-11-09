@@ -85,15 +85,18 @@ This script will:
 - Create a virtual environment in `~/venvs/sam2_realtime_venv` (if not existing)
 - Install Python dependencies
 - Install the upstream **SAM2** repo in editable mode
-- Download checkpoints
-- Export `SAM2_ASSETS_DIR` in your `~/.bashrc`
+- Download the checkpoints into `~/sam2_assets/checkpoints` (skipped when they are already there)
 
-✅ After setup, activate everything with:
+✅ No environment variables are needed. The launch scripts in `sam2_realtime_bringup/launch` activate the venv, `cd` into `~/sam2_assets` and load `checkpoints/sam2.1_hiera_small.pt` from there.
 
-```bash
-source ~/venvs/sam2_realtime_venv/bin/activate
-source ~/.bashrc
-```
+📂 **Asset folders** (optional overrides):
+
+| Variable | Default | Holds |
+|---|---|---|
+| `SAM2_ASSETS_DIR` | `~/sam2_assets` | `checkpoints/sam2.1_*.pt` |
+| `YOLO_ASSETS_DIR` | `~/yolo_ros/models` | YOLO weights for `yolo_prompt_node` / `yolo_mask_prompt_node` |
+
+Set a variable only to keep the files elsewhere; `setup_env.sh` and the launch scripts both use it. When starting `ros2 launch` directly, run it from the SAM2 assets folder, since the default `checkpoint` is a relative path.
 
 ---
 

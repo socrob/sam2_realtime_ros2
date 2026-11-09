@@ -28,9 +28,12 @@ else
     exit 1
 fi
 
-# Check assets path
-if [ -z "$SAM2_ASSETS_DIR" ]; then
-    echo "❌ SAM2_ASSETS_DIR is not set. Please export it first."
+# SAM2 assets (checkpoints/) live in ~/sam2_assets unless SAM2_ASSETS_DIR overrides it
+SAM2_ASSETS_DIR="${SAM2_ASSETS_DIR:-$HOME/sam2_assets}"
+
+if [ ! -f "$SAM2_ASSETS_DIR/checkpoints/sam2.1_hiera_small.pt" ]; then
+    echo "❌ SAM2 checkpoint not found: $SAM2_ASSETS_DIR/checkpoints/sam2.1_hiera_small.pt"
+    echo "   Run setup_env.sh from the sam2_realtime_ros2 repository, or set SAM2_ASSETS_DIR."
     exit 1
 fi
 

@@ -88,10 +88,11 @@ class YOLOMaskPromptNode(Node):
             .double_value
         )
 
-        # Model path
+        # Model path: weights are looked up in ~/yolo_ros/models unless
+        # YOLO_ASSETS_DIR overrides it (an absolute yolo_model is used as is)
         assets_root = os.environ.get("YOLO_ASSETS_DIR", "")
         if not assets_root:
-            raise RuntimeError("YOLO_ASSETS_DIR environment variable not set")
+            assets_root = os.path.expanduser("~/yolo_ros/models")
 
         self.yolo_model_path = os.path.join(assets_root, yolo_model)
 

@@ -1,10 +1,18 @@
 #!/bin/bash
 set -e
 
+# Paths below are relative to the repository root, wherever the script is run from
+REPO_DIR="$(dirname "$(realpath "$0")")"
+cd "$REPO_DIR"
+
 # === CONFIG ===
 VENV_PATH=~/venvs/sam2_realtime_venv
-SAM2_DIR=sam2_realtime/sam2_realtime/segment-anything-2-real-time
-ASSETS_DIR=$(realpath "$SAM2_DIR")
+SAM2_DIR="$REPO_DIR/sam2_realtime/sam2_realtime/segment-anything-2-real-time"
+
+# Checkpoints go to ~/sam2_assets/checkpoints, where the launch scripts look for
+# them. Set SAM2_ASSETS_DIR to use another folder (and keep it set when launching).
+ASSETS_DIR="${SAM2_ASSETS_DIR:-$HOME/sam2_assets}"
+CHECKPOINTS=(sam2.1_hiera_tiny.pt sam2.1_hiera_small.pt sam2.1_hiera_base_plus.pt sam2.1_hiera_large.pt)
 
 echo "🚀 Setting up SAM2 Real-Time ROS 2 environment..."
 
@@ -29,21 +37,26 @@ echo "⬇️  Installing SAM2 dependencies ..."
 cd "$SAM2_DIR"
 pip install -e ".[notebooks]"
 
-# === STEP 5: Download checkpoints ===
-echo "⬇️  Downloading SAM2 checkpoints ..."
-cd checkpoints
-chmod +x download_ckpts.sh
-./download_ckpts.sh
+# === STEP 5: Download checkpoints into the assets folder ===
+# The upstream download script saves into the current directory, so it runs
+# from the assets folder. It is skipped when every checkpoint is already there,
+# because wget would otherwise save duplicate copies (*.pt.1).
+mkdir -p "$ASSETS_DIR/checkpoints"
+cd "$ASSETS_DIR/checkpoints"
 
-# === STEP 6: Set SAM2_ASSETS_DIR in bashrc if not already ===
-echo "🔑 Setting SAM2_ASSETS_DIR in ~/.bashrc ..."
-if grep -q "export SAM2_ASSETS_DIR=" ~/.bashrc; then
-  echo "✅ SAM2_ASSETS_DIR already set in ~/.bashrc"
+MISSING=0
+for ckpt in "${CHECKPOINTS[@]}"; do
+  if [ ! -f "$ckpt" ]; then
+    MISSING=1
+  fi
+done
+
+if [ "$MISSING" -eq 1 ]; then
+  echo "⬇️  Downloading SAM2 checkpoints into $ASSETS_DIR/checkpoints ..."
+  bash "$SAM2_DIR/checkpoints/download_ckpts.sh"
 else
-  echo "export SAM2_ASSETS_DIR=\"$ASSETS_DIR\"" >> ~/.bashrc
-  echo "✅ Added: export SAM2_ASSETS_DIR=\"$ASSETS_DIR\""
+  echo "✅ SAM2 checkpoints already in $ASSETS_DIR/checkpoints"
 fi
 
 echo "✅ All done! Virtual environment is active."
-echo "👉 Next time, run: source ~/venvs/sam2_realtime_venv/bin/activate"
-echo "👉 And: source ~/.bashrc  (or restart your shell) to load SAM2_ASSETS_DIR"
+echo "👉 The launch scripts in sam2_realtime_bringup activate the venv and find the checkpoints by themselves."
