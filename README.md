@@ -1,4 +1,4 @@
-# 🎯 **SAM2 Real-Time Tracker ROS 2**
+# **SAM2 Real-Time Tracker ROS 2**
 
 **`sam2_realtime_ros2`** is a ROS 2 wrapper for [Gy920/segment-anything-2-real-time](https://github.com/Gy920/segment-anything-2-real-time). It brings **Segment Anything 2** into real-time perception pipelines for robots: an external detector sends the prompt (a box or a mask), SAM2 segments the object in every frame, and an EKF tracks its 3D position.
 
@@ -6,7 +6,7 @@ This repository expects a **Python virtual environment** to isolate dependencies
 
 ---
 
-## 📂 **Repo structure**
+## **Repo structure**
 
 ```
 sam2_realtime_ros2/
@@ -31,18 +31,18 @@ sam2_realtime_ros2/
 
 ---
 
-## ⚙️ **How It Works**
+## **How It Works**
 
-➜ **1️⃣ SAM2 Segmentation**  
+**1. SAM2 Segmentation**  
 `sam2_realtime_node.py`:
 - Loads the **segment-anything-2-real-time** model
 - Waits for a prompt from an external detector: a box (`PromptBbox`) on `/sam2/init_prompt`, or a mask image on `/sam2/init_prompt_mask`. The package has no detector of its own.
 - Publishes the object's mask on `/sam2/mask` (and the image with the mask drawn on `/sam2/img_mask` with `live_visualization`)
 
-➜ **2️⃣ Mask2PCL** (optional)  
+**2. Mask2PCL** (optional)  
 `mask2pcl.py` turns the mask and the depth image into the object's point cloud (`/mask2pcl/object_cloud`) in `target_frame`.
 
-➜ **3️⃣ EKF Tracking**  
+**3. EKF Tracking**  
 `track_node.py`:
 - Synchronizes:
   - Depth image
@@ -60,16 +60,16 @@ Mask2PCL and the tracker are lifecycle nodes that process while ACTIVE; pause th
 
 ---
 
-## 🏗️ **Build & Setup**
+## **Build & Setup**
 
-1️⃣ **Build the workspace:**
+1. **Build the workspace:**
 
 ```bash
 colcon build
 source install/setup.bash
 ```
 
-2️⃣ **Run the environment setup script:**
+2. **Run the environment setup script:**
 
 ```bash
 ./setup_env.sh
@@ -81,9 +81,9 @@ This script will:
 - Install the upstream **SAM2** repo in editable mode
 - Download the checkpoints into `~/sam2_assets/checkpoints` (skipped when they are already there)
 
-✅ No environment variables are needed. `sam2_tracking_pipeline.sh` activates the venv, `cd` into `~/sam2_assets` and load `checkpoints/sam2.1_hiera_small.pt` from there.
+No environment variables are needed. `sam2_tracking_pipeline.sh` activates the venv, `cd` into `~/sam2_assets` and load `checkpoints/sam2.1_hiera_small.pt` from there.
 
-📂 **Asset folders** (optional overrides):
+**Asset folders** (optional overrides):
 
 | Variable | Default | Holds |
 |---|---|---|
@@ -93,7 +93,7 @@ Set it only to keep the files elsewhere; `setup_env.sh` and the launch script bo
 
 ---
 
-## 🎥 **Run Example**
+## **Run Example**
 
 ```bash
 # From sam2_realtime_bringup/launch:
@@ -114,7 +114,7 @@ ros2 topic pub -1 /sam2/init_prompt sam2_realtime_msgs/msg/PromptBbox "{x_min: 4
 
 ---
 
-## 🎯 **Camera Depth Scale**
+## **Camera Depth Scale**
 
 | Camera        | Depth scale |
 |---------------|-------------|
@@ -122,17 +122,17 @@ ros2 topic pub -1 /sam2/init_prompt sam2_realtime_msgs/msg/PromptBbox "{x_min: 4
 | Orbbec        | 1           |
 | Azure Kinect  | 1           |
 
-✅ `sam2_tracking_pipeline.sh` sets them per camera (`depth_image_units_divisor`).
+`sam2_tracking_pipeline.sh` sets them per camera (`depth_image_units_divisor`).
 
 ---
 
-## 🐳 **Docker**
+## **Docker**
 
 A `docker/` folder provides `Dockerfile` + `docker-compose.yml`. Use this to containerize the entire pipeline. The virtual environment must still be activated **inside** the container.
 
 ---
 
-## ✅ **TODO**
+## **TODO**
 
 - [ ] Extend for multi-object tracking and latest updates
 - [ ] Final cleanup of Docker setup
@@ -140,9 +140,9 @@ A `docker/` folder provides `Dockerfile` + `docker-compose.yml`. Use this to con
 
 ---
 
-## 🏷️ **Credits**
+## **Credits**
 
 - Upstream: [Gy920/segment-anything-2-real-time](https://github.com/Gy920/segment-anything-2-real-time)
 - ROS 2 Humble or newer
 
-Built by **SocRob@Home** 🤖
+Built by **SocRob@Home**
