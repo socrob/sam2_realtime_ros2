@@ -32,3 +32,7 @@ The package only tracks: the prompt comes from an external detector, as a `Promp
 ## GitHub workflow removed (2026-11-11)
 
 - `.github/workflows/ci.yml` (build plus the ament linters) is removed. It had failed on every `main` run since May on the linters (missing copyright headers, about 570 flake8 warnings), so it said nothing about the changes.
+
+### No emojis (2026-11-11)
+
+- `README.md` and `setup_env.sh` no longer use emojis: plain headings, numbered steps (`1.`), and plain `echo` messages.
