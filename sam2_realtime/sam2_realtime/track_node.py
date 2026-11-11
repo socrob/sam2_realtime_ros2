@@ -20,7 +20,6 @@ from tf2_ros import TransformBroadcaster
 
 from geometry_msgs.msg import PointStamped
 from tf2_geometry_msgs.tf2_geometry_msgs import do_transform_point
-from std_msgs.msg import String
 
 from sensor_msgs.msg import CameraInfo, Image
 from geometry_msgs.msg import TransformStamped
@@ -54,7 +53,6 @@ class TrackNode(LifecycleNode):
         self.declare_parameter("print_measurement_marker", True)
         self.declare_parameter("max_position_jump", 0.3) #meters
         self.declare_parameter("relock_window", 1) #seconds
-        self.declare_parameter("enable", False) #event_in
 
         self.declare_parameter("sync_queue_size", 10)
         self.declare_parameter("sync_slop", 0.05)
@@ -95,7 +93,6 @@ class TrackNode(LifecycleNode):
         self.print_measurement_marker = (self.get_parameter("print_measurement_marker").get_parameter_value().bool_value)
         self.max_position_jump = (self.get_parameter("max_position_jump").get_parameter_value().double_value)
         self.relock_window = (self.get_parameter("relock_window").get_parameter_value().integer_value)
-        self.enable = (self.get_parameter("enable").get_parameter_value().bool_value)
         self.camera_frame = None
 
         self.sync_queue_size = self.get_parameter("sync_queue_size").get_parameter_value().integer_value
@@ -227,6 +224,8 @@ class TrackNode(LifecycleNode):
         self.latest_packet = None
         self.processing_measurement = False
         self.has_measurement = False
+        self.centroid = (0.0, 0.0)
+        self.last_update_time = self.get_clock().now()
 
         # Subscribe once to CameraInfo.
         self.cam_info_sub = self.create_subscription(
@@ -257,13 +256,6 @@ class TrackNode(LifecycleNode):
         )
         self._synchronizer.registerCallback(self.synced_measurement_cb)
 
-        self._event_sub = self.create_subscription(
-            String,
-            "event_in",
-            self.event_callback,
-            10,
-        )
-
         # Processes latest depth+mask measurement outside the sync callback.
         self.measurement_timer = self.create_timer(
             self.processing_timer_period,
@@ -284,6 +276,10 @@ class TrackNode(LifecycleNode):
 
     def on_deactivate(self, state: LifecycleState) -> TransitionCallbackReturn:
         self.get_logger().info(f"[{self.get_name()}] Deactivating...")
+
+        # Pausing: the predicted TF shouldn't keep drifting while inactive
+        if self.ekf is not None:
+            self.ekf.zero_velocity()
 
         self.camera_frame = None
         self.cam_info_msg = None
@@ -309,10 +305,6 @@ class TrackNode(LifecycleNode):
         if hasattr(self, "cam_info_sub") and self.cam_info_sub is not None:
             self.destroy_subscription(self.cam_info_sub)
             self.cam_info_sub = None
-
-        if hasattr(self, "_event_sub") and self._event_sub is not None:
-            self.destroy_subscription(self._event_sub)
-            self._event_sub = None
 
         if hasattr(self, "_synchronizer"):
             del self._synchronizer
@@ -375,9 +367,6 @@ class TrackNode(LifecycleNode):
 
         Heavy measurement extraction and EKF update happen in process_latest_measurement().
         """
-        if not self.enable:
-            return
-
         self.latest_packet = (depth_msg, tracker_msg)
 
 
@@ -404,9 +393,6 @@ class TrackNode(LifecycleNode):
         If SAM2 loses the person, we progressively damp the EKF velocity so the
         predicted TF does not continue drifting too far.
         """
-        if not self.enable:
-            return
-
         if self.camera_frame is None or not self.has_measurement:
             return
 
@@ -484,10 +470,6 @@ class TrackNode(LifecycleNode):
         if self.processing_measurement:
             return
 
-        if not self.enable:
-            self.latest_packet = None
-            return
-
         if self.latest_packet is None:
             return
 
@@ -525,9 +507,6 @@ class TrackNode(LifecycleNode):
         The raw measurement is first computed in the camera frame, then transformed
         into target_frame. The EKF is updated in target_frame.
         """
-        if not self.enable:
-            return
-
         # If mask is not available, there is no point in tracking.
         if not tracker_msg.mask:
             return
@@ -872,25 +851,6 @@ class TrackNode(LifecycleNode):
         transformed_ps = do_transform_point(ps, transform)
 
         return (transformed_ps.point.x, transformed_ps.point.y, transformed_ps.point.z)
-
-    def event_callback(self, msg: String):
-        if msg.data == "e_stop":
-            self.enable = False
-            self.latest_packet = None
-
-            if self.ekf is not None:
-                self.ekf.zero_velocity()
-
-            self.get_logger().info("[track_node] Received e_stop → pausing tracking.")
-        elif msg.data == "e_start":
-            self.enable = True
-            self.has_measurement = False
-            self.latest_packet = None
-            self.centroid = (0.0, 0.0)
-            self.last_update_time = self.get_clock().now()
-            self.get_logger().info("[track_node] Received e_start → resuming tracking.")
-        else:
-            self.get_logger().warn(f"[track_node] Unknown event: '{msg.data}'")
 
 
 def main():

@@ -21,14 +21,9 @@ setup(
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
-            "sam2_realtime_multi_node = sam2_realtime.sam2_realtime_multi_node:main",
             "sam2_realtime_node = sam2_realtime.sam2_realtime_node:main",
-            "bbox_prompt_node = sam2_realtime.bbox_prompt_node:main",
-            "yolo_prompt_node = sam2_realtime.yolo_prompt_node:main",
-            "yolo_mask_prompt_node = sam2_realtime.yolo_mask_prompt_node:main",
             "mask2pcl = sam2_realtime.mask2pcl:main",
             "track_node = sam2_realtime.track_node:main",
-            "debug_node = sam2_realtime.debug_node:main",
         ],
     },
 )
