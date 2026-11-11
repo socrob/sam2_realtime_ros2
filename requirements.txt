@@ -6,6 +6,4 @@ hydra-core
 # rclpy
 matplotlib 
 imageio 
-ultralytics 
-lap 
 shapely

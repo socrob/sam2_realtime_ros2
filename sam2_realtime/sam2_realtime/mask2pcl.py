@@ -17,7 +17,6 @@ from cv_bridge import CvBridge
 from tf2_ros.buffer import Buffer
 from tf2_ros import TransformException, TransformListener
 from rclpy.duration import Duration
-from std_msgs.msg import String
 from std_msgs.msg import Header
 from sensor_msgs.msg import CameraInfo, Image, PointCloud2
 from sensor_msgs_py import point_cloud2 as pcl2
@@ -43,7 +42,6 @@ class Mask2Pcl(LifecycleNode):
         self.declare_parameter("sam2_mask_topic", "/sam2/mask")
         self.declare_parameter("depth_image_reliability", QoSReliabilityPolicy.BEST_EFFORT)
         self.declare_parameter("depth_info_reliability", QoSReliabilityPolicy.BEST_EFFORT)
-        self.declare_parameter("enable", False)
         self.declare_parameter("min_mask_area", 100)
         self.declare_parameter("cloud_stride", 4)
 
@@ -90,7 +88,6 @@ class Mask2Pcl(LifecycleNode):
             .integer_value
         )
 
-        self.enable = self.get_parameter("enable").get_parameter_value().bool_value
         self.min_mask_area = self.get_parameter("min_mask_area").get_parameter_value().integer_value
         self.cloud_stride = max(
             1,
@@ -174,13 +171,6 @@ class Mask2Pcl(LifecycleNode):
         )
         self._synchronizer.registerCallback(self.synced_cb)
 
-        self._event_sub = self.create_subscription(
-            String,
-            "event_in",
-            self.event_callback,
-            10,
-        )
-
         self.processing_timer = self.create_timer(
             self.processing_timer_period,
             self.process_latest_packet,
@@ -212,10 +202,6 @@ class Mask2Pcl(LifecycleNode):
         if hasattr(self, "cam_info_sub") and self.cam_info_sub is not None:
             self.destroy_subscription(self.cam_info_sub)
             self.cam_info_sub = None
-
-        if hasattr(self, "_event_sub") and self._event_sub is not None:
-            self.destroy_subscription(self._event_sub)
-            self._event_sub = None
 
         if hasattr(self, "_synchronizer"):
             del self._synchronizer
@@ -260,9 +246,6 @@ class Mask2Pcl(LifecycleNode):
 
         Heavy point cloud generation runs in process_latest_packet().
         """
-        if not self.enable:
-            return
-
         self.latest_packet = (depth_msg, detections_msg)
 
     def process_latest_packet(self) -> None:
@@ -270,10 +253,6 @@ class Mask2Pcl(LifecycleNode):
         Process the latest synchronized packet outside the subscriber callback.
         """
         if self.processing:
-            return
-
-        if not self.enable:
-            self.latest_packet = None
             return
 
         if self.latest_packet is None:
@@ -645,21 +624,6 @@ class Mask2Pcl(LifecycleNode):
             ],
             dtype=np.float32,
         )
-
-
-    def event_callback(self, msg: String):
-        if msg.data == "e_stop":
-            self.enable = False
-            self.latest_packet = None
-            self.get_logger().info("[mask2pcl_node] Received e_stop → pausing tracking.")
-
-        elif msg.data == "e_start":
-            self.enable = True
-            self.latest_packet = None
-            self.get_logger().info("[mask2pcl_node] Received e_start → resuming tracking.")
-
-        else:
-            self.get_logger().warn(f"[mask2pcl_node] Unknown event: '{msg.data}'")
 
 
 def main():
