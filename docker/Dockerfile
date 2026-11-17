@@ -42,7 +42,7 @@ RUN pip3 install --no-cache-dir -r src/ros2_template/requirements.txt
 # Install ROS package dependencies and build
 RUN source /opt/ros/humble/setup.bash && \
     rosdep install --from-paths src --ignore-src -r -y && \
-    colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release
+    colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
 
 # Add workspace setup to shell
 RUN echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc && \

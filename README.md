@@ -65,7 +65,7 @@ Mask2PCL and the tracker are lifecycle nodes that process while ACTIVE; pause th
 1. **Build the workspace:**
 
 ```bash
-colcon build
+colcon build --symlink-install
 source install/setup.bash
 ```
 
